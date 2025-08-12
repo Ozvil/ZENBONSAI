@@ -499,16 +499,20 @@ function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
   }
 
   function addPhoto(file, note){
-    const r = new FileReader()
-    r.onload = ()=>{
-      const entry = { id:uid(), at:nowISO(), src:r.result, note:note||'' }
-      const list = [entry, ...(bonsai.photos||[])]
-      onUpdate({ photos:list })
-      onHistory({ id:uid(), type:'photo', at:nowISO(), note })
-      if(list.length>=2) onAch({ beforeAfter:true })
-    }
-    r.readAsDataURL(file)
+    async function addPhoto(file, note){
+  try{
+    const small = await compressImage(file, 1280, 0.82);
+    const entry = { id:uid(), at:nowISO(), src:small, note:note||'' };
+    const list = [entry, ...(bonsai.photos||[])];
+    onUpdate({ photos:list });
+    onHistory({ id:uid(), type:'photo', at:nowISO(), note });
+    if(list.length>=2) onAch({ beforeAfter:true });
+  }catch(err){
+    console.warn('No se pudo agregar la foto', err);
+    alert('La foto es muy pesada o no se pudo procesar.');
   }
+}
+
 
   function shareImage(){
     // Usa la última foto o el placeholder del nombre
