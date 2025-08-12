@@ -179,3 +179,35 @@ body{ margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, 
   animation: zb-shimmer 1.4s infinite linear;
 }
 @keyframes zb-shimmer{ 0%{ background-position: 0% 0 } 100%{ background-position: -180% 0 } }
+/* ==== Accordion & search ==== */
+.zb-accordion{ border:1px solid rgba(226,232,240,0.7); border-radius:12px; background: var(--card); box-shadow: var(--shadow); margin:12px 0; }
+@media (prefers-color-scheme: dark){ .zb-accordion{ border-color: rgba(148,163,184,0.15) } }
+.zb-accordion__head{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; background:transparent; border:none; cursor:pointer; }
+.zb-accordion__body{ padding:12px 14px; border-top:1px solid rgba(226,232,240,0.7) }
+@media (prefers-color-scheme: dark){ .zb-accordion__body{ border-top-color: rgba(148,163,184,0.15) } }
+.zb-caret{ width:10px; height:10px; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted); transform: rotate(-45deg); transition:.2s }
+.zb-accordion.is-open .zb-caret{ transform: rotate(45deg) }
+
+.zb-search{ display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid rgba(226,232,240,0.85); border-radius:10px; margin-bottom:10px; background:#fff }
+@media (prefers-color-scheme: dark){ .zb-search{ background: rgba(255,255,255,0.04); border-color: rgba(148,163,184,0.15) } }
+.zb-search input{ border:none; outline:none; background:transparent; width:100%; color:var(--text) }
+
+/* ==== Tiny icons (CSS) ==== */
+.zb-ico{ width:14px; height:14px; display:inline-block; position:relative; }
+.zb-ico--info::before{ content:'ℹ️'; }
+.zb-ico--care::before{ content:'🌱'; }
+.zb-ico--check::before{ content:'✅'; }
+.zb-ico--photos::before{ content:'🖼️'; }
+.zb-ico--images::before{ content:'📷'; }
+.zb-ico--calendar::before{ content:'📅'; }
+.zb-ico--sensor::before{ content:'📟'; }
+.zb-ico--gps::before{ content:'📍'; }
+.zb-ico--plus::before{ content:'➕'; }
+.zb-ico--tools::before{ content:'🛠️'; }
+.zb-ico--prop::before{ content:'🌿'; }
+.zb-ico--collection::before{ content:'🪴'; }
+.zb-ico--style::before{ content:'🎨'; }
+
+/* Callout */
+.zb-callout{ padding:10px 12px; border-radius:10px; border:1px dashed rgba(148,163,184,0.35); background: rgba(99,102,241,0.06); }
+
