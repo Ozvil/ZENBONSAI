@@ -8,7 +8,29 @@ const LS_ACH  = 'bonsaiKeeper:v1:ach'
 function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36) }
 function nowISO(){ return new Date().toISOString() }
 function fmt(d, lang){ try{ return new Date(d).toLocaleString(lang==='es'?'es-PE':'en-US') }catch{ return d } }
-
+// --- Comprimir imagen a JPG base64 (máx. 1280px) ---
+async function compressImage(file, maxDim = 1280, quality = 0.82){
+  const dataUrl = await new Promise((res, rej)=>{
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result);
+    fr.onerror = rej;
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise((res, rej)=>{
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = dataUrl;
+  });
+  const w = img.width, h = img.height;
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  const cw = Math.round(w * scale), ch = Math.round(h * scale);
+  const cnv = document.createElement('canvas');
+  cnv.width = cw; cnv.height = ch;
+  const ctx = cnv.getContext('2d');
+  ctx.drawImage(img, 0, 0, cw, ch);
+  return cnv.toDataURL('image/jpeg', quality); // ~200–400 KB típico
+}
 /** ──────────────────────── i18n ──────────────────────── */
 const STR = {
   es: {
