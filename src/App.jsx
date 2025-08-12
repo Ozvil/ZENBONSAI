@@ -249,9 +249,28 @@ export default function App(){
   const [showNew,setShowNew]=useState(false)
   const [editing,setEditing]=useState(null)
 
-  useEffect(()=>localStorage.setItem(LS_LANG, lang),[lang])
-  useEffect(()=>localStorage.setItem(LS_KEY, JSON.stringify(data)),[data])
-  useEffect(()=>localStorage.setItem(LS_ACH, JSON.stringify(ach)),[ach])
+// idioma puede quedar simple
+useEffect(() => localStorage.setItem(LS_LANG, lang), [lang])
+
+// datos: con try/catch para evitar caída por cuota de localStorage
+useEffect(() => {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Error guardando en localStorage', e)
+    alert('Tu colección es grande o la foto es pesada. Usa imágenes más livianas o elimina alguna foto para seguir guardando.')
+  }
+}, [data])
+
+// logros: opcionalmente protegido también
+useEffect(() => {
+  try {
+    localStorage.setItem(LS_ACH, JSON.stringify(ach))
+  } catch (e) {
+    console.warn('Error guardando logros', e)
+  }
+}, [ach])
+
 
   const filtered = useMemo(()=>{
     const q = query.trim().toLowerCase()
