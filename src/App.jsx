@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 
-/** ──────────────────────── Persistencia ──────────────────────── */
+/* ───────────────────────── Persistencia ───────────────────────── */
 const LS_KEY = 'bonsaiKeeper:v1:data'
 const LS_LANG = 'bonsaiKeeper:v1:lang'
 const LS_ACH  = 'bonsaiKeeper:v1:ach'
@@ -8,30 +8,32 @@ const LS_ACH  = 'bonsaiKeeper:v1:ach'
 function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36) }
 function nowISO(){ return new Date().toISOString() }
 function fmt(d, lang){ try{ return new Date(d).toLocaleString(lang==='es'?'es-PE':'en-US') }catch{ return d } }
-// --- Comprimir imagen a JPG base64 (máx. 1280px) ---
+
+/* ─────────── Comprimir imagen a JPG base64 (máx. 1280px) ─────────── */
 async function compressImage(file, maxDim = 1280, quality = 0.82){
   const dataUrl = await new Promise((res, rej)=>{
-    const fr = new FileReader();
-    fr.onload = () => res(fr.result);
-    fr.onerror = rej;
-    fr.readAsDataURL(file);
-  });
+    const fr = new FileReader()
+    fr.onload = () => res(fr.result)
+    fr.onerror = rej
+    fr.readAsDataURL(file)
+  })
   const img = await new Promise((res, rej)=>{
-    const im = new Image();
-    im.onload = () => res(im);
-    im.onerror = rej;
-    im.src = dataUrl;
-  });
-  const w = img.width, h = img.height;
-  const scale = Math.min(1, maxDim / Math.max(w, h));
-  const cw = Math.round(w * scale), ch = Math.round(h * scale);
-  const cnv = document.createElement('canvas');
-  cnv.width = cw; cnv.height = ch;
-  const ctx = cnv.getContext('2d');
-  ctx.drawImage(img, 0, 0, cw, ch);
-  return cnv.toDataURL('image/jpeg', quality); // ~200–400 KB típico
+    const im = new Image()
+    im.onload = () => res(im)
+    im.onerror = rej
+    im.src = dataUrl
+  })
+  const w = img.width, h = img.height
+  const scale = Math.min(1, maxDim / Math.max(w, h))
+  const cw = Math.round(w * scale), ch = Math.round(h * scale)
+  const cnv = document.createElement('canvas')
+  cnv.width = cw; cnv.height = ch
+  const ctx = cnv.getContext('2d')
+  ctx.drawImage(img, 0, 0, cw, ch)
+  return cnv.toDataURL('image/jpeg', quality)
 }
-/** ──────────────────────── i18n ──────────────────────── */
+
+/* ───────────────────────────── i18n ───────────────────────────── */
 const STR = {
   es: {
     app_title: 'ZenBonsai App',
@@ -157,18 +159,6 @@ const STR = {
     after: 'After',
     lang_label: 'Language',
     share: 'Share my bonsai',
-    // Tips
-    tips_title: 'General care tips',
-    tip1_t: 'Water by need, not by schedule',
-    tip1_d: 'Finger test (1 cm). If slightly dry, water thoroughly.',
-    tip2_t: 'Free-draining substrate',
-    tip2_d: 'Akadama + pumice + lava. Avoid waterlogging.',
-    tip3_t: 'Watch signals',
-    tip3_d: 'Droopy leaves that perk up after watering = just in time.',
-    tip4_t: 'Water quality & timing',
-    tip4_d: 'Mornings are best; rain/filtered water helps.',
-    tip5_t: 'Patience & consistency',
-    tip5_d: 'Adjust to species, climate and season.',
     // Achievements
     ach_title: 'Achievements',
     ach_first_tree: 'First bonsai registered',
@@ -179,7 +169,7 @@ const STR = {
   }
 }
 
-/** ──────────────────────── Biblioteca de cuidados ──────────────────────── */
+/* ───────────────────── Biblioteca de cuidados ───────────────────── */
 const CARE_LIBRARY = {
   "Juniperus (Junípero)": {
     es: { luz: "Pleno sol 4–8h/día (evita interior).", riego: "Deja secar la capa superior; riegos profundos. 2–4×/sem verano; 1–2×/sem invierno.", abono: "Orgánico de liberación lenta primavera-otoño; líquido cada 2–4 semanas.", poda: "Pinzado de brotes blandos; estructural a fines de invierno.", sustrato: "Drenante (akadama 60–70% + pomice/volcánica).", trasplante: "Cada 2–3 años (fin de invierno)." },
@@ -196,7 +186,7 @@ const CARE_LIBRARY = {
 }
 const SPECIES_LIST = Object.keys(CARE_LIBRARY)
 
-/** ──────────────────────── Checklist/Log ──────────────────────── */
+/* ───────────────────── Checklist / Registro ───────────────────── */
 const DEFAULT_TASKS = [
   { key:'riego', labelES:'Riego', labelEN:'Watering', freq:2 },
   { key:'abono', labelES:'Abono', labelEN:'Fertilizing', freq:14 },
@@ -217,10 +207,10 @@ function nextDueLabel(tasks, lang){
   return out
 }
 
-/** ──────────────────────── Logros ──────────────────────── */
+/* ─────────────────────────── Logros ─────────────────────────── */
 function defaultAch(){ return { firstTree:false, firstWater:false, fiveCares:false, beforeAfter:false, careCount:0 } }
 
-/** ──────────────────────── Utils UI ──────────────────────── */
+/* ────────────────────────── UI helpers ───────────────────────── */
 function Section({title, children, right}){
   return (
     <div style={{margin:'18px 0'}}>
@@ -232,10 +222,9 @@ function Section({title, children, right}){
     </div>
   )
 }
-
 function Pill({children}){ return <span style={{fontSize:12, padding:'4px 8px', background:'#eef2ff', borderRadius:999, marginRight:6}}>{children}</span> }
 
-/** ──────────────────────── App ──────────────────────── */
+/* ───────────────────────────── App ───────────────────────────── */
 export default function App(){
   const [lang, setLang] = useState(localStorage.getItem(LS_LANG) || 'es')
   const [data, setData] = useState(()=> {
@@ -249,28 +238,23 @@ export default function App(){
   const [showNew,setShowNew]=useState(false)
   const [editing,setEditing]=useState(null)
 
-// idioma puede quedar simple
-useEffect(() => localStorage.setItem(LS_LANG, lang), [lang])
-
-// datos: con try/catch para evitar caída por cuota de localStorage
-useEffect(() => {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(data))
-  } catch (e) {
-    console.warn('Error guardando en localStorage', e)
-    alert('Tu colección es grande o la foto es pesada. Usa imágenes más livianas o elimina alguna foto para seguir guardando.')
-  }
-}, [data])
-
-// logros: opcionalmente protegido también
-useEffect(() => {
-  try {
-    localStorage.setItem(LS_ACH, JSON.stringify(ach))
-  } catch (e) {
-    console.warn('Error guardando logros', e)
-  }
-}, [ach])
-
+  // Guardados
+  useEffect(() => { localStorage.setItem(LS_LANG, lang) }, [lang])
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(data))
+    } catch (e) {
+      console.warn('Error guardando en localStorage', e)
+      alert('Tu colección es grande o la foto es pesada. Usa imágenes más livianas o elimina alguna foto para seguir guardando.')
+    }
+  }, [data])
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_ACH, JSON.stringify(ach))
+    } catch (e) {
+      console.warn('Error guardando logros', e)
+    }
+  }, [ach])
 
   const filtered = useMemo(()=>{
     const q = query.trim().toLowerCase()
@@ -294,7 +278,7 @@ useEffect(() => {
   function logCare(id, key){
     setData(prev=> prev.map(b=>{
       if(b.id!==id) return b
-      const tasks = b.tasks.map(t=> t.key===key ? {...t, lastDone: nowISO()} : t)
+      const tasks = (b.tasks||[]).map(t=> t.key===key ? {...t, lastDone: nowISO()} : t)
       return {...b, tasks}
     }))
     const lbl = key==='riego' ? (lang==='es'?'Riego':'Watering') : key==='abono' ? (lang==='es'?'Abono':'Fertilizing') : key
@@ -371,7 +355,7 @@ useEffect(() => {
   )
 }
 
-/** ──────────────────────── Card ──────────────────────── */
+/* ─────────────────────────── Card ─────────────────────────── */
 function BonsaiCard({b, lang, onOpen, onLog}){
   const care = nextDueLabel(b.tasks||[], lang)
   const t = (k)=> ({es:{
@@ -402,7 +386,7 @@ function BonsaiCard({b, lang, onOpen, onLog}){
   )
 }
 
-/** ──────────────────────── New Modal ──────────────────────── */
+/* ─────────────────────── New Modal ─────────────────────── */
 function NewBonsaiModal({lang, onClose, onSave}){
   const [name,setName]=useState('')
   const [species,setSpecies]=useState('')
@@ -412,17 +396,15 @@ function NewBonsaiModal({lang, onClose, onSave}){
 
   const suggestions = useMemo(()=> SPECIES_LIST.filter(s=> s.toLowerCase().includes(notes.toLowerCase()) || s.toLowerCase().includes(name.toLowerCase())).slice(0,5), [notes,name])
 
-  function handleFile(e){
-   async function handleFile(e){
-  const f = e.target.files?.[0]; if(!f) return;
-  try{
-    const small = await compressImage(f, 1280, 0.82);
-    setPhoto(small);
-  }catch(err){
-    console.warn('No se pudo comprimir la imagen', err);
-    alert('No se pudo procesar la imagen. Intenta con otra foto.');
-  }
-}
+  async function handleFile(e){
+    const f = e.target.files?.[0]; if(!f) return
+    try{
+      const small = await compressImage(f, 1280, 0.82)
+      setPhoto(small)
+    }catch(err){
+      console.warn('No se pudo comprimir la imagen', err)
+      alert('No se pudo procesar la imagen. Intenta con otra foto.')
+    }
   }
   function save(){
     onSave({
@@ -484,7 +466,7 @@ function NewBonsaiModal({lang, onClose, onSave}){
   )
 }
 
-/** ──────────────────────── Detail Modal ──────────────────────── */
+/* ────────────────────── Detail Modal ────────────────────── */
 function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
   const [tab, setTab] = useState('care') // care | checklist | photos | learn | tips
   const lib = CARE_LIBRARY[bonsai.species] || null
@@ -517,24 +499,21 @@ function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
     onHistory({ id:uid(), type:'care', action:taskKey, label:taskKey, at:nowISO() })
   }
 
-  function addPhoto(file, note){
-    async function addPhoto(file, note){
-  try{
-    const small = await compressImage(file, 1280, 0.82);
-    const entry = { id:uid(), at:nowISO(), src:small, note:note||'' };
-    const list = [entry, ...(bonsai.photos||[])];
-    onUpdate({ photos:list });
-    onHistory({ id:uid(), type:'photo', at:nowISO(), note });
-    if(list.length>=2) onAch({ beforeAfter:true });
-  }catch(err){
-    console.warn('No se pudo agregar la foto', err);
-    alert('La foto es muy pesada o no se pudo procesar.');
+  async function addPhoto(file, note){
+    try{
+      const small = await compressImage(file, 1280, 0.82)
+      const entry = { id:uid(), at:nowISO(), src:small, note:note||'' }
+      const list = [entry, ...(bonsai.photos||[])]
+      onUpdate({ photos:list })
+      onHistory({ id:uid(), type:'photo', at:nowISO(), note })
+      if(list.length>=2) onAch({ beforeAfter:true })
+    }catch(err){
+      console.warn('No se pudo agregar la foto', err)
+      alert('La foto es muy pesada o no se pudo procesar.')
+    }
   }
-}
-
 
   function shareImage(){
-    // Usa la última foto o el placeholder del nombre
     const imgSrc = (bonsai.photos?.[0]?.src) || bonsai.photo
     const cnv = document.createElement('canvas')
     const W=1080,H=1350; cnv.width=W; cnv.height=H
@@ -620,7 +599,7 @@ function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
       {tab==='checklist' && (
         <div>
           {(bonsai.tasks||[]).map(t=>
-            <div key={t.key} style={{display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #e5e7eb', borderRadius:10, padding:'10px 12px', margin:'8px 0'}}>
+            <div key={t.key} style={{display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #e5e7eb', borderRadius:10, padding:'10px 12px', margin:'8px 0'}>
               <div>
                 <div style={{fontWeight:600}}>{lang==='es'?t.labelES:t.labelEN}</div>
                 <div style={{fontSize:12, color:'#64748b'}}>{STR[lang].every} {t.freq} {STR[lang].days} · <b>{nextDueLabel([t],lang)[t.key]}</b></div>
@@ -700,12 +679,11 @@ function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
   )
 }
 
-/** ──────────────────────── Before/After ──────────────────────── */
+/* ─────────────────────── Before/After ─────────────────────── */
 function BeforeAfter({before, after, lang}){
-  const wrap = useRef(null)
   const [pos,setPos]=useState(50)
   return (
-    <div ref={wrap} style={{position:'relative', width:'100%', maxWidth:720, margin:'6px 0'}}>
+    <div style={{position:'relative', width:'100%', maxWidth:720, margin:'6px 0'}}>
       <div style={{position:'relative', width:'100%', paddingTop:'56%', borderRadius:12, overflow:'hidden', background:'#e2e8f0'}}>
         <img src={before} style={{position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover'}}/>
         <img src={after} style={{position:'absolute', inset:0, width:`${pos}%`, height:'100%', objectFit:'cover', borderRight:'2px solid white'}}/>
@@ -718,7 +696,7 @@ function BeforeAfter({before, after, lang}){
   )
 }
 
-/** ──────────────────────── Modal ──────────────────────── */
+/* ─────────────────────────── Modal ─────────────────────────── */
 function Modal({title, children, onClose, lang}){
   useEffect(()=>{
     const onEsc=(e)=>{ if(e.key==='Escape') onClose() }
@@ -741,7 +719,7 @@ function Modal({title, children, onClose, lang}){
   )
 }
 
-/** ──────────────────────── Estilos helpers ──────────────────────── */
+/* ──────────────────────── Estilos helper ─────────────────────── */
 function btn(color){
   const base = { padding:'8px 12px', borderRadius:8, border:'1px solid transparent', cursor:'pointer' }
   if(color==='emerald') return {...base, background:'#10b981', color:'#fff'}
