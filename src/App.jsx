@@ -481,6 +481,23 @@ export default function App(){
   const updateBonsai = (u)=> setBonsais(bonsais.map(b=>b.id===u.id?u:b));
 
   return (
+    useEffect(() => {
+  (async () => {
+    try {
+      if (settings?.location && !settings?.astro) {
+        const { lat, lon, tz } = settings.location;
+        const astro = await loadAstronomy(lat, lon, tz);
+        setSettings(s => ({
+          ...s,
+          astro,
+          hemi: s.hemi || hemisphereFromLat(lat)
+        }));
+      }
+    } catch (e) {
+      console.error('No se pudo cargar astro:', e);
+    }
+  })();
+}, [settings.location]);
     <div className="zb-app">
       <header className="zb-header">
         <div className="zb-header__inner">
