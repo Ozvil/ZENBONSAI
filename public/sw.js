@@ -1,1 +1,43 @@
-const CACHE='zenbonsai-v4.1';self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(['/','/index.html','/manifest.webmanifest']))) });self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))) });self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(u.origin===location.origin){e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))}else{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)))}});
+// --- ZenBonsai Service Worker ---
+const CACHE_STATIC = 'zb-static-v1';
+const CACHE_DYNAMIC = 'zb-dyn-v1';
+
+const PRECACHE = [
+  '/', '/index.html',
+  '/manifest.webmanifest',
+  '/icons/icon-180.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  // Datasets que usa la app
+  '/species.json',
+  '/estilos.es.json',
+  '/tips_generales.es.json',
+  '/tools.es.json',
+  '/propagation.es.json',
+];
+
+self.addEventListener('install', (evt) => {
+  evt.waitUntil(
+    caches.open(CACHE_STATIC)
+      .then((c) => c.addAll(PRECACHE))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', (evt) => {
+  evt.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(keys
+        .filter((k) => ![CACHE_STATIC, CACHE_DYNAMIC].includes(k))
+        .map((k) => caches.delete(k))
+      )
+    )
+  );
+  self.clients.claim();
+});
+
+// Estrategias:
+// - Navegación (SPA): network-first con fallback a /index.html
+// - JSON: network-first (guarda copia para offline)
+// - Scripts/estilos/assets (incluye /assets/ de Vite): cache-first
+// - Imágenes: stale-whil
