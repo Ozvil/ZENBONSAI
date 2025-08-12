@@ -1,0 +1,54 @@
+[
+  {
+    "key": "semillas",
+    "title_es": "Multiplicación por semillas (sexual)",
+    "summary_es": "Método natural y sencillo; las plantas resultantes pueden ser híbridos y no idénticos a los progenitores.",
+    "tips_es": "Estratificar/remojo según especie; siembra espaciada y riegos suaves; trasplante y formación al año siguiente.",
+    "refs": [
+      {
+        "doc": "como.hacer.bonsai (1).pdf",
+        "lines": "L1-L12, L29-L45",
+        "file_id": "turn11file1"
+      }
+    ]
+  },
+  {
+    "key": "esquejes",
+    "title_es": "Esquejes",
+    "summary_es": "Fragmentos de tallo/hoja con yemas en sustrato húmedo; método fácil para principiantes.",
+    "tips_es": "Elegir madera lignificada; hormonas enraizantes; alta humedad y sombra; trasplante a maceta de entrenamiento tras enraizar.",
+    "refs": [
+      {
+        "doc": "como.hacer.bonsai (1).pdf",
+        "lines": "L12-L24 (esqueje), L61-L80",
+        "file_id": "turn11file1"
+      }
+    ]
+  },
+  {
+    "key": "acodo",
+    "title_es": "Acodo aéreo",
+    "summary_es": "Induce raíces en una rama o sección de tronco mientras sigue unida a la planta madre.",
+    "tips_es": "Método con musgo y plástico; puede tardar meses (o años según técnica); sellar cortes tras separar.",
+    "refs": [
+      {
+        "doc": "como.hacer.bonsai (1).pdf",
+        "lines": "L1-L9 (ACODO AEREO sección)",
+        "file_id": "turn11file1"
+      }
+    ]
+  },
+  {
+    "key": "injerto",
+    "title_es": "Injerto",
+    "summary_es": "Asocia porta-injerto e injerto; afinidad variable.",
+    "tips_es": "La unión puede ser voluminosa si la afinidad es baja; utilizar portainjertos compatibles.",
+    "refs": [
+      {
+        "doc": "como.hacer.bonsai (1).pdf",
+        "lines": "L1-L12 (injerto, primera sección)",
+        "file_id": "turn11file1"
+      }
+    ]
+  }
+]

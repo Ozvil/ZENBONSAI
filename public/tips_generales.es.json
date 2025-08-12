@@ -1,0 +1,127 @@
+{
+  "version": "1.1.0",
+  "generated_at": "2025-08-12",
+  "language": "es",
+  "source_files": [
+    "turn14file0",
+    "turn14file1",
+    "turn14file2",
+    "turn14file3",
+    "turn14file4",
+    "turn14file5",
+    "turn14file6",
+    "turn14file7",
+    "turn14file8",
+    "turn14file9",
+    "turn14file10",
+    "turn14file11",
+    "turn14file12",
+    "turn14file13"
+  ],
+  "tips": [
+    {
+      "id": "riego-cuando-sec",
+      "title": "Riega por necesidad, no por calendario",
+      "summary": "Riega cuando el sustrato empiece a secarse; verifica con el dedo/varilla. Evita encharcar.",
+      "details": "La pauta base es regar cuando el sustrato se note algo seco en superficie, entendiendo que la capa inferior puede seguir húmeda. En días de sol y viento la parte superior se seca antes. Evita mojar flores para no acelerar su caída. Aplica un riego suave inicial para humedecer y, tras unos segundos, un segundo riego hasta que escurra por los drenajes.",
+      "citations": [
+        "fileciteturn14file14L99-L107"
+      ]
+    },
+    {
+      "id": "riego-agua-calidad",
+      "title": "Calidad del agua",
+      "summary": "Prefiere agua de lluvia o baja mineralización; evita destilada de forma exclusiva.",
+      "details": "El agua del grifo puede contener cloro y sales. En zonas de pH alto, usa agua de lluvia, de osmosis o embotellada de baja mineralización. No regar con agua destilada como única fuente.",
+      "citations": [
+        "fileciteturn14file14L99-L107"
+      ]
+    },
+    {
+      "id": "humedad-ambiente",
+      "title": "Sube la humedad ambiental con bandeja",
+      "summary": "Bandeja con gravilla y agua bajo la maceta, sin tocar el fondo, ayuda a mantener humedad.",
+      "details": "Coloca la maceta sobre una bandeja con gravilla cubierta de agua. El agua no debe tocar la base de la maceta; busca solo elevar la humedad alrededor.",
+      "citations": [
+        "fileciteturn14file11L38-L43"
+      ]
+    },
+    {
+      "id": "abonado-reglas",
+      "title": "Reglas de abonado seguras",
+      "summary": "No abones árboles recién plantados o enfermos ni justo tras defoliar. Ajusta NPK por época y usa dosis moderadas.",
+      "details": "Además de macronutrientes, utiliza microelementos. En sustratos inertes abona con mayor frecuencia. Aporta quelatos a finales de invierno si el abonado previo fue escaso. Los químicos pueden dañar raíces y microfauna; con líquidos usa media dosis; con sólidos emplea cestitas. Un buen abonado otoñal mejora resistencia y brotación primaveral.",
+      "citations": [
+        "fileciteturn14file14L39-L80"
+      ]
+    },
+    {
+      "id": "trasplante-frecuencia",
+      "title": "¿Cada cuánto trasplantar?",
+      "summary": "En general, cada 2 años en caducos y hasta 4 en perennes, salvo necesidad (raíz enferma).",
+      "details": "El trasplante se realiza cuando es necesario: si trasplantaste el año pasado, espera ~2 años en caducos o ~4 en perennes. Trasplanta de urgencia si hay podredumbre de raíces o problemas en el cepellón.",
+      "citations": [
+        "fileciteturn14file12L6-L15",
+        "fileciteturn14file12L10-L13"
+      ]
+    },
+    {
+      "id": "trasplante-motivos",
+      "title": "Por qué trasplantar",
+      "summary": "Con el tiempo el sustrato pierde porosidad y las raíces ocupan todo el volumen: hay que renovar.",
+      "details": "El trasplante renueva un suelo poroso y permite sanear raíces. Con macetas llenas de raíces disminuye la aireación y el paso de agua; revisar y eliminar raíces podridas.",
+      "citations": [
+        "fileciteturn14file8L6-L12",
+        "fileciteturn14file8L21-L28"
+      ]
+    },
+    {
+      "id": "invierno-proteccion",
+      "title": "Protección invernal (exterior)",
+      "summary": "Caja de polietileno con turba hasta cubrir la maceta y mantener humedad/temperatura estables.",
+      "details": "Para invernar un bonsái grande: usa caja de polietileno con 3/4 de turba y drenaje; coloca la planta y completa hasta cubrir la maceta. Mantén condiciones de 0–5 °C, ~70% humedad y ventilación.",
+      "citations": [
+        "fileciteturn14file0L62-L72",
+        "fileciteturn14file1L19-L26"
+      ]
+    },
+    {
+      "id": "registro-diario",
+      "title": "Lleva registro (“diario de a bordo”)",
+      "summary": "Anota orígenes, edad, trasplantes, podas, plagas, etc. por cada árbol para tomar mejores decisiones.",
+      "details": "Llevar una ficha o ‘diario de a bordo’ por árbol (origen, edad, trasplantes, podas, plagas) es práctico y valioso.",
+      "citations": [
+        "fileciteturn14file1L34-L73"
+      ]
+    },
+    {
+      "id": "plagas-primeros-auxilios",
+      "title": "Plagas: primero lo manual/ecológico",
+      "summary": "Revisa árbol por árbol al regar; elimina plagas a mano y prioriza controles ecológicos antes de químicos.",
+      "details": "Cochinilla: retirar manualmente, limpiar con agua y alcohol 50/50, dejar secar y aplicar insecticida de amplio espectro si persiste. Hormigas suelen indicar pulgones.",
+      "citations": [
+        "fileciteturn14file10L76-L88",
+        "fileciteturn14file10L101-L111",
+        "fileciteturn14file7L6-L10"
+      ]
+    },
+    {
+      "id": "luz-girar",
+      "title": "Luz: gíralo periódicamente",
+      "summary": "Girar el árbol sin cambiarlo de sitio reparte la luz y evita crecimientos desbalanceados.",
+      "details": "La exposición a pleno sol estimula la brotación en muchas especies; rota el árbol para repartir la incidencia de luz.",
+      "citations": [
+        "fileciteturn14file4L55-L61"
+      ]
+    },
+    {
+      "id": "post-trasplante",
+      "title": "Cuidados tras el trasplante/plantado",
+      "summary": "Sombra ligera 1 semana, riego fino, sin fertilizar hasta buen arraigo.",
+      "details": "Tras plantar o trasplantar: riega con regadera de lluvia, ubica a semisombra unos días, hidrata el follaje y pospone el abonado hasta que esté bien arraigado.",
+      "citations": [
+        "fileciteturn14file13L8-L19"
+      ]
+    }
+  ]
+}

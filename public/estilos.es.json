@@ -1,0 +1,266 @@
+{
+  "metadata": {
+    "language": "es",
+    "generated_at": "2025-08-12T06:18:41.574636Z",
+    "notes": "Normas sintetizadas y mapeadas a preguntas de morfología para el ‘Motor de Estilos’."
+  },
+  "estilos": [
+    {
+      "id": "chokkan",
+      "nombre": "Chokkan (Vertical formal)",
+      "dificultad": 3,
+      "descripcion": "Tronco recto con buena conicidad; ramas organizadas desde ~1/4 de la altura.",
+      "morfologia_ideal": [
+        "Tronco recto y cónico",
+        "Nebari radial visible",
+        "Ramas ordenadas y alternadas"
+      ],
+      "reglas_clave": [
+        "Tronco recto, base gruesa afinando hacia el ápice",
+        "Primeras ramas a ~1/4 de la altura",
+        "Ramas distribuidas para un triángulo estable"
+      ],
+      "maceta_sugerida": "Rectangular poco profunda, esmalte discreto",
+      "errores_comunes": [
+        "Falta de conicidad",
+        "Primer tercio con ramas gruesas",
+        "Paralelismo entre ramas"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file4",
+          "lines": "L45-L56"
+        }
+      ]
+    },
+    {
+      "id": "moyogi",
+      "nombre": "Moyogi (Vertical informal)",
+      "dificultad": 2,
+      "descripcion": "Tronco sinuoso con una o más curvas; ramas nacen en la parte externa de cada curva.",
+      "morfologia_ideal": [
+        "Curvas suaves con conicidad",
+        "Línea del ápice sobre la base",
+        "Ramas saliendo en curvas exteriores"
+      ],
+      "reglas_clave": [
+        "Curvas menos pronunciadas hacia el ápice",
+        "Rama principal sale por el exterior de una curva",
+        "Inclinación total < 25° para no convertirse en Shakkan"
+      ],
+      "maceta_sugerida": "Oval o rectangular",
+      "errores_comunes": [
+        "Curvas en 'S' muy simétricas",
+        "Ramas en la parte cóncava de la curva"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file5",
+          "lines": "L10-L19"
+        },
+        {
+          "source": "turn7file4",
+          "lines": "L57-L66"
+        },
+        {
+          "source": "turn7file7",
+          "lines": "L1-L5"
+        }
+      ]
+    },
+    {
+      "id": "shakkan",
+      "nombre": "Shakkan (Inclinado)",
+      "dificultad": 3,
+      "descripcion": "Árbol inclinado desde la base; ramas y raíces equilibran la caída.",
+      "morfologia_ideal": [
+        "Inclinación visible desde el nebari",
+        "Raíz de apoyo marcada",
+        "Dos ramas clave: balance y profundidad"
+      ],
+      "reglas_clave": [
+        "Ángulos típicos: 30°, 45°, >45° (Sho/Chu/Dai)",
+        "Rama 1 al lado opuesto a la inclinación para balance",
+        "Ramas a ambos lados (difiere de Fukinagashi)"
+      ],
+      "maceta_sugerida": "Redonda o cuadrada; plantado desplazado",
+      "errores_comunes": [
+        "Inclinación iniciada por encima de la base",
+        "Ápice que cae fuera del diseño",
+        "Ramas solo en un lado (eso sería Fukinagashi)"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file0",
+          "lines": "L24-L45"
+        },
+        {
+          "source": "turn7file0",
+          "lines": "L56-L66"
+        },
+        {
+          "source": "turn7file5",
+          "lines": "L105-L130"
+        }
+      ]
+    },
+    {
+      "id": "kengai",
+      "nombre": "Kengai (Cascada)",
+      "dificultad": 5,
+      "descripcion": "Ápice y ramas principales descienden por debajo del borde de la maceta.",
+      "morfologia_ideal": [
+        "Rama/ápice dominante hacia abajo",
+        "Raíces fuertes en el lado opuesto a la caída",
+        "Tronco con curva natural"
+      ],
+      "reglas_clave": [
+        "Cae hasta 180°; follaje puede sobrepasar patas de la maceta",
+        "Ramas nacen en la parte convexa del tronco",
+        "Vasijas altas (redondas/hexagonales); plantado lateral"
+      ],
+      "maceta_sugerida": "Alta y profunda (redonda/hexagonal)",
+      "errores_comunes": [
+        "Curva en media luna artificial en el nacimiento del tronco",
+        "Tronco tocando la maceta",
+        "Raíces fuertes del lado de la caída (deben ir al contrario)"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file1",
+          "lines": "L31-L40"
+        },
+        {
+          "source": "turn7file9",
+          "lines": "L1-L15"
+        },
+        {
+          "source": "turn7file9",
+          "lines": "L52-L61"
+        }
+      ]
+    },
+    {
+      "id": "han_kengai",
+      "nombre": "Han-kengai (Semicascada)",
+      "dificultad": 4,
+      "descripcion": "Caída menos dramática que la cascada; el ápice no baja por debajo de la base de la maceta.",
+      "morfologia_ideal": [
+        "Rama dominante hacia abajo sin sobrepasar base",
+        "Segundo tronco/ápice posible hacia arriba"
+      ],
+      "reglas_clave": [
+        "Inclinación ~70–90° sin rebasar base inferior",
+        "Maceta más baja y de boca ancha que en Kengai"
+      ],
+      "maceta_sugerida": "Alta pero menos profunda que en Kengai",
+      "errores_comunes": [
+        "Dejar caer por debajo de la base (eso ya es Kengai)"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file1",
+          "lines": "L86-L90"
+        },
+        {
+          "source": "turn7file8",
+          "lines": "L64-L76"
+        },
+        {
+          "source": "turn7file8",
+          "lines": "L94-L96"
+        }
+      ]
+    },
+    {
+      "id": "fukinagashi",
+      "nombre": "Fukinagashi (Barrido por el viento)",
+      "dificultad": 4,
+      "descripcion": "Tronco y ramas empujados en una misma dirección por el viento.",
+      "morfologia_ideal": [
+        "Tronco inclinado",
+        "Mayoría de ramas al mismo lado",
+        "Movimiento direccional fuerte"
+      ],
+      "reglas_clave": [
+        "Ramas y ápice en dirección del viento",
+        "Variantes: recto, moyogi, retorcido, (semi)cascada, bunjin",
+        "El tronco no queda completamente horizontal"
+      ],
+      "maceta_sugerida": "Oval o rectangular estable",
+      "errores_comunes": [
+        "Ramas cruzadas sin sentido direccional",
+        "Ángulo del tronco completamente horizontal"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file3",
+          "lines": "L57-L66"
+        },
+        {
+          "source": "turn7file3",
+          "lines": "L76-L84"
+        },
+        {
+          "source": "turn7file11",
+          "lines": "L98-L104"
+        }
+      ]
+    },
+    {
+      "id": "hokidachi",
+      "nombre": "Hokidachi (Escoba)",
+      "dificultad": 1,
+      "descripcion": "Copa en forma de escoba invertida; ideal para caducifolios con ramificación fina.",
+      "morfologia_ideal": [
+        "Tronco recto",
+        "Ramas a 1/3–1/2 de la altura",
+        "Ramificación fina y repetida"
+      ],
+      "reglas_clave": [
+        "Bifurcaciones sucesivas con nudos cada vez más pequeños",
+        "Silueta de escoba invertida (bola/paraguas)"
+      ],
+      "maceta_sugerida": "Oval o rectangular baja",
+      "errores_comunes": [
+        "Ramas muy bajas",
+        "Falta de ramificación fina"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file3",
+          "lines": "L98-L115"
+        },
+        {
+          "source": "turn7file4",
+          "lines": "L31-L41"
+        }
+      ]
+    },
+    {
+      "id": "bunjin",
+      "nombre": "Bunjin/Literati",
+      "dificultad": 4,
+      "descripcion": "Tronco largo y delgado, con pocas ramas hasta la parte superior; estética caligráfica.",
+      "morfologia_ideal": [
+        "Tronco serpenteante, muy limpio",
+        "Masa de follaje alta"
+      ],
+      "reglas_clave": [
+        "Ramas se concentran en la parte alta",
+        "Proporción negativa/simplificación de masas"
+      ],
+      "maceta_sugerida": "Pequeña y poco profunda",
+      "errores_comunes": [
+        "Demasiadas ramas bajas",
+        "Tronco sin fluidez caligráfica"
+      ],
+      "referencias": [
+        {
+          "source": "turn7file7",
+          "lines": "L98-L111"
+        }
+      ]
+    }
+  ]
+}

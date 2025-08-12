@@ -1,0 +1,202 @@
+[
+  {
+    "key": "tijeras",
+    "name_es": "Tijeras para corte",
+    "name_en": "Pruning scissors",
+    "usage": "Cortes limpios en brotes tiernos, ramas delgadas, defoliado y poda de raíces.",
+    "why": "Hojas cortas y muy afiladas; brazos largos para aplicar fuerza sin dañar la hoja.",
+    "cautions": "No usarlas en ramas gruesas; mantener siempre afiladas y limpias.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L28-L40, L30-L38",
+        "file_id": "turn11file0"
+      },
+      {
+        "doc": "Atlas-Bonsai.pdf",
+        "lines": "L83-L121 (herramientas/tijeras)",
+        "file_id": "turn11file4"
+      }
+    ]
+  },
+  {
+    "key": "tenaza_concava",
+    "name_es": "Tenaza de corte cóncavo",
+    "name_en": "Concave branch cutter",
+    "usage": "Cortar ramas dejando herida cóncava que cicatriza mejor.",
+    "why": "Evita abultamientos antiestéticos al cicatrizar.",
+    "cautions": "Difícil de afilar si se mella; usar con cuidado.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L44-L60",
+        "file_id": "turn11file0"
+      },
+      {
+        "doc": "bonsai-arboles-en-miniatura--7.pdf",
+        "lines": "L66-L69",
+        "file_id": "turn11file11"
+      }
+    ]
+  },
+  {
+    "key": "tenaza_jin",
+    "name_es": "Tenaza de jin",
+    "name_en": "Jin pliers",
+    "usage": "Pelar corteza para jin/shari; doblar/asegurar alambre.",
+    "why": "Permite crear madera muerta y manipular alambres.",
+    "cautions": "No reemplaza corta-alambres para cortes.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L21-L33",
+        "file_id": "turn11file1"
+      }
+    ]
+  },
+  {
+    "key": "corta_alambres",
+    "name_es": "Corta‑alambres",
+    "name_en": "Wire cutters",
+    "usage": "Cortar alambre de modelado o anclaje.",
+    "why": "Mangos largos ayudan con calibres gruesos.",
+    "cautions": "Elegir tamaño adecuado; evitar dañar corteza al cortar junto a ramas.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L36-L44",
+        "file_id": "turn11file1"
+      },
+      {
+        "doc": "bonsai-arboles-en-miniatura--7.pdf",
+        "lines": "L58-L61",
+        "file_id": "turn11file11"
+      }
+    ]
+  },
+  {
+    "key": "palillos_bambu",
+    "name_es": "Palillos de bambú",
+    "name_en": "Bamboo chopsticks",
+    "usage": "Desenredar raíces durante trasplantes; asentar sustrato entre raíces.",
+    "why": "Madera blanda que minimiza daños en raíces finas.",
+    "cautions": "Afilarlos periódicamente.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L48-L60",
+        "file_id": "turn11file1"
+      }
+    ]
+  },
+  {
+    "key": "rastrillo_esp",
+    "name_es": "Rastrillo con espátula",
+    "name_en": "Root rake with spatula",
+    "usage": "Rascar superficie, ayudar a desenredar raíces; alisar y facilitar extracción de la maceta.",
+    "why": "Herramienta doble muy útil en trasplantes.",
+    "cautions": "Cuidado para no arrancar raíces.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L29-L35 (otra vista L31-L35)",
+        "file_id": "turn11file2"
+      },
+      {
+        "doc": "-eBook-Bonsai-ES.pdf",
+        "lines": "L20-L27",
+        "file_id": "turn11file14"
+      }
+    ]
+  },
+  {
+    "key": "gubias",
+    "name_es": "Gubias y descortezadores",
+    "name_en": "Gouges and wood carvers",
+    "usage": "Trabajar madera muerta buscando naturalidad.",
+    "why": "Permiten controlar textura y forma en jin/shari.",
+    "cautions": "Riesgo de accidentes; las eléctricas pueden comer demasiada madera si hay descuido.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L39-L50",
+        "file_id": "turn11file2"
+      },
+      {
+        "doc": "el-bonsai-arte-viviente-teoria-y.pdf",
+        "lines": "L189-L209 (láminas)",
+        "file_id": "turn11file6"
+      }
+    ]
+  },
+  {
+    "key": "cepillos",
+    "name_es": "Cepillos",
+    "name_en": "Brushes",
+    "usage": "Limpiar corteza/partes muertas (p. ej., en juníperos); mantener superficie limpia.",
+    "why": "Mejora aspecto y reduce patógenos.",
+    "cautions": "Evitar cerdas metálicas duras que dañen la corteza.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L28-L31 (cepillos)",
+        "file_id": "turn11file7"
+      },
+      {
+        "doc": "Atlas-Bonsai.pdf",
+        "lines": "L17-L31, L55-L71",
+        "file_id": "turn11file8"
+      }
+    ]
+  },
+  {
+    "key": "escobillas",
+    "name_es": "Escobillas",
+    "name_en": "Brooms",
+    "usage": "Retirar agujas/hojas secas y limpiar superficie del tiesto.",
+    "why": "Higiene general del árbol y sustrato.",
+    "cautions": "Fácil de sustituir por equivalentes suaves.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L35-L40",
+        "file_id": "turn11file7"
+      }
+    ]
+  },
+  {
+    "key": "sierras",
+    "name_es": "Sierras/navajas/cuchillos",
+    "name_en": "Saws/knives",
+    "usage": "Cortes en ramas gruesas, acodos, injertos; sierra japonesa corta al tirar.",
+    "why": "Corte limpio en espacios estrechos.",
+    "cautions": "Mantener hojas muy afiladas; prevenir daños en otras ramas.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L43-L48",
+        "file_id": "turn11file7"
+      },
+      {
+        "doc": "Atlas-Bonsai.pdf",
+        "lines": "L103-L121 (sierras)",
+        "file_id": "turn11file9"
+      }
+    ]
+  },
+  {
+    "key": "mantenimiento_herramientas",
+    "name_es": "Cuidado de herramientas",
+    "name_en": "Tool maintenance",
+    "usage": "Limpieza con alcohol/kerosén tras uso; lubricar con WD-40 o vaselina si no se usan por tiempo.",
+    "why": "Evita contagios de hongos/bacterias y oxidación; prolonga vida útil.",
+    "cautions": "Ajustar remaches con golpes suaves; comprobar juego periódicamente.",
+    "refs": [
+      {
+        "doc": "Herramientas para bonsai 2.pdf",
+        "lines": "L8-L29 (sección de cuidado)",
+        "file_id": "turn11file3"
+      }
+    ]
+  }
+]
