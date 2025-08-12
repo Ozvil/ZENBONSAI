@@ -1,755 +1,819 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
-/* ───────────────────────── Persistencia ───────────────────────── */
-const LS_KEY = 'bonsaiKeeper:v1:data'
-const LS_LANG = 'bonsaiKeeper:v1:lang'
-const LS_ACH  = 'bonsaiKeeper:v1:ach'
+/**
+ * ZenBonsai — App.jsx (one-file, robust care + refs)
+ *
+ * Incluye:
+ * - Registro de bonsáis (foto comprimida + historial)
+ * - Autocompletar de especie desde /species.json
+ * - Cuidados por especie (si existen) + Fallback por género + Referencias (libros/páginas)
+ * - Tips generales, Herramientas y Propagación (desde JSON)
+ * - Checklist con histórico de marcados
+ * - Sugeridor de Estilos (wizard) usando /estilos.es.json
+ * - Ubicación (búsqueda o GPS) con Open-Meteo: amanecer/atardecer + fase lunar
+ * - Ventanas recomendadas (trasplante/poda/alambrado/defoliado) por hemisferio y modo lunar opcional
+ *
+ * Archivos esperados en /public:
+ *  - species.json              (usa tu species_full.json renombrado)
+ *  - estilos.es.json
+ *  - tips_generales.es.json
+ *  - tools.es.json
+ *  - propagation.es.json
+ */
 
-function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36) }
-function nowISO(){ return new Date().toISOString() }
-function fmt(d, lang){ try{ return new Date(d).toLocaleString(lang==='es'?'es-PE':'en-US') }catch{ return d } }
+/* ============== Utils almacenamiento ============== */
+const loadLS = (key, fallback) => {
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+  catch { return fallback; }
+};
+const saveLS = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} };
 
-/* ─────────── Comprimir imagen a JPG base64 (máx. 1280px) ─────────── */
-async function compressImage(file, maxDim = 1280, quality = 0.82){
-  const dataUrl = await new Promise((res, rej)=>{
-    const fr = new FileReader()
-    fr.onload = () => res(fr.result)
-    fr.onerror = rej
-    fr.readAsDataURL(file)
-  })
-  const img = await new Promise((res, rej)=>{
-    const im = new Image()
-    im.onload = () => res(im)
-    im.onerror = rej
-    im.src = dataUrl
-  })
-  const w = img.width, h = img.height
-  const scale = Math.min(1, maxDim / Math.max(w, h))
-  const cw = Math.round(w * scale), ch = Math.round(h * scale)
-  const cnv = document.createElement('canvas')
-  cnv.width = cw; cnv.height = ch
-  const ctx = cnv.getContext('2d')
-  ctx.drawImage(img, 0, 0, cw, ch)
-  return cnv.toDataURL('image/jpeg', quality)
+/* ============== Cache con TTL ============== */
+function setCache(key, value, ttlHours = 24) {
+  const exp = Date.now() + ttlHours * 3600 * 1000;
+  saveLS(key, { exp, value });
+}
+function getCache(key) {
+  try {
+    const raw = loadLS(key, null);
+    if (!raw) return null;
+    if (!raw.exp || Date.now() > raw.exp) { localStorage.removeItem(key); return null; }
+    return raw.value;
+  } catch { return null; }
 }
 
-/* ───────────────────────────── i18n ───────────────────────────── */
-const STR = {
-  es: {
-    app_title: 'ZenBonsai App',
-    app_tag: 'Registra, identifica y cuida tu colección',
-    search: 'Buscar…',
-    all_species: 'Todas las especies',
-    new: '+ Nuevo',
-    empty_title: 'Aún no tienes bonsáis registrados',
-    empty_sub: 'Agrega tu primer árbol y empecemos a cuidarlo.',
-    new_bonsai: 'Nuevo bonsái',
-    name: 'Nombre',
-    location: 'Ubicación',
-    loc_sun: 'Exterior soleado',
-    loc_pshade: 'Exterior sombra parcial',
-    loc_bright: 'Interior muy luminoso',
-    species: 'Especie',
-    notes_ident: 'Notas para identificar',
-    notes_ph: 'Ej. aguja/escama, flor blanca, raíz gruesa…',
-    suggest: 'Sugerencias',
-    identify: 'Identificar especie',
-    save: 'Guardar',
-    cancel: 'Cancelar',
-    photo: 'Foto',
-    none_photo: 'Sin foto',
-    species_tbc: 'Especie por confirmar',
-    due_next: 'Próximos vencimientos',
-    quick_actions: 'Acciones rápidas',
-    log_water: 'Registrar riego',
-    log_fert: 'Registrar abono',
-    history: 'Historial',
-    none_history: 'Sin registros aún.',
-    care_tab: 'Cuidados',
-    checklist_tab: 'Checklist',
-    photos_tab: 'Fotos',
-    learn_tab: 'Aprende & Inspírate',
-    tips_tab: 'Tips generales',
-    close: 'Cerrar',
-    never: 'Nunca registrado',
-    every: 'cada',
-    days: 'días',
-    overdue: '¡Vencido!',
-    learn_loading: 'Cargando información…',
-    learn_read: 'Leer en Wikipedia →',
-    inspire_title: 'Inspiración (Wikimedia Commons)',
-    inspire_note: 'Imágenes públicas desde Wikimedia Commons.',
-    photo_note_ph: 'Nota de esta foto (opcional)',
-    photos_empty: 'Aún no hay fotos. Agrega la primera para iniciar el control de cambios.',
-    compare_title: 'Comparador (antes / después)',
-    drag: 'Arrastra',
-    before: 'Antes',
-    after: 'Después',
-    lang_label: 'Idioma',
-    share: 'Compartir mi bonsái',
-    // Tips
-    tips_title: 'Tips generales de cuidado',
-    tip1_t: 'Riega según necesidad, no por calendario',
-    tip1_d: 'Prueba del dedo (1 cm). Si está ligeramente seco, riega a fondo.',
-    tip2_t: 'Sustrato drenante',
-    tip2_d: 'Akadama + pumice + lava. Evita encharcamientos.',
-    tip3_t: 'Observa señales',
-    tip3_d: 'Hojas decaídas que se recuperan tras regar = justo a tiempo.',
-    tip4_t: 'Calidad y horario del riego',
-    tip4_d: 'Mañana es ideal; lluvia/filtrada si es posible.',
-    tip5_t: 'Paciencia y consistencia',
-    tip5_d: 'Cada especie y clima mandan. Ajusta por estación.',
-    // Logros
-    ach_title: 'Logros',
-    ach_first_tree: 'Primer bonsái registrado',
-    ach_first_water: 'Primer riego registrado',
-    ach_5_cares: '5 cuidados registrados',
-    ach_before_after: 'Primer antes/después fotográfico',
-    unlocked: 'Desbloqueado',
-  },
-  en: {
-    app_title: 'ZenBonsai App',
-    app_tag: 'Register, identify and care for your collection',
-    search: 'Search…',
-    all_species: 'All species',
-    new: '+ New',
-    empty_title: 'No bonsai registered yet',
-    empty_sub: 'Add your first tree and let’s start caring for it.',
-    new_bonsai: 'New bonsai',
-    name: 'Name',
-    location: 'Location',
-    loc_sun: 'Sunny outdoor',
-    loc_pshade: 'Partial shade outdoor',
-    loc_bright: 'Very bright indoor',
-    species: 'Species',
-    notes_ident: 'Notes for identification',
-    notes_ph: 'e.g., needles/scales, white flower, thick root…',
-    suggest: 'Suggestions',
-    identify: 'Identify species',
-    save: 'Save',
-    cancel: 'Cancel',
-    photo: 'Photo',
-    none_photo: 'No photo',
-    species_tbc: 'Species to confirm',
-    due_next: 'Upcoming due',
-    quick_actions: 'Quick actions',
-    log_water: 'Log watering',
-    log_fert: 'Log fertilizing',
-    history: 'History',
-    none_history: 'No records yet.',
-    care_tab: 'Care',
-    checklist_tab: 'Checklist',
-    photos_tab: 'Photos',
-    learn_tab: 'Learn & Inspire',
-    tips_tab: 'General Tips',
-    close: 'Close',
-    never: 'Never logged',
-    every: 'every',
-    days: 'days',
-    overdue: 'Overdue!',
-    learn_loading: 'Loading…',
-    learn_read: 'Read on Wikipedia →',
-    inspire_title: 'Inspiration (Wikimedia Commons)',
-    inspire_note: 'Public images from Wikimedia Commons.',
-    photo_note_ph: 'Note for this photo (optional)',
-    photos_empty: 'No photos yet. Add one to start change tracking.',
-    compare_title: 'Compare (before / after)',
-    drag: 'Drag',
-    before: 'Before',
-    after: 'After',
-    lang_label: 'Language',
-    share: 'Share my bonsai',
-    // Achievements
-    ach_title: 'Achievements',
-    ach_first_tree: 'First bonsai registered',
-    ach_first_water: 'First watering logged',
-    ach_5_cares: '5 care actions logged',
-    ach_before_after: 'First before/after photo',
-    unlocked: 'Unlocked',
+/* ============== Normalización y búsqueda de especie (robusto) ============== */
+const norm = (s) =>
+  (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+/**
+ * Busca especie con:
+ * 1) match exacto científico (insensible a acentos/case),
+ * 2) por nombres comunes (ES/EN),
+ * 3) "empieza con…",
+ * 4) Fallback por género (p. ej., "ficus ..." → usa la primera entrada del género).
+ */
+function findSpeciesEntry(speciesDB, input) {
+  if (!speciesDB?.species?.length || !input) return null;
+  const n = norm(input);
+
+  // 1) científica exacta
+  let hit = speciesDB.species.find(sp => norm(sp.scientific_name) === n);
+
+  // 2) nombres comunes
+  if (!hit) {
+    hit = speciesDB.species.find(sp => {
+      const es = (sp.common_names?.es || []).map(norm);
+      const en = (sp.common_names?.en || []).map(norm);
+      return es.includes(n) || en.includes(n);
+    });
   }
-}
 
-/* ───────────────────── Biblioteca de cuidados ───────────────────── */
-const CARE_LIBRARY = {
-  "Juniperus (Junípero)": {
-    es: { luz: "Pleno sol 4–8h/día (evita interior).", riego: "Deja secar la capa superior; riegos profundos. 2–4×/sem verano; 1–2×/sem invierno.", abono: "Orgánico de liberación lenta primavera-otoño; líquido cada 2–4 semanas.", poda: "Pinzado de brotes blandos; estructural a fines de invierno.", sustrato: "Drenante (akadama 60–70% + pomice/volcánica).", trasplante: "Cada 2–3 años (fin de invierno)." },
-    en: { luz: "Full sun 4–8h/day (avoid indoors).", riego: "Let top layer dry; deep waterings. 2–4×/week summer; 1–2×/week winter.", abono: "Slow-release organic spring–autumn; liquid every 2–4 weeks.", poda: "Pinch soft growth; structural in late winter.", sustrato: "Free-draining (akadama 60–70% + pumice/lava).", trasplante: "Every 2–3 years (late winter)." },
-    wiki: { es: "Juniperus", en: "Juniperus" },
-    inspireTerm: { es: "bonsái Juniperus", en: "bonsai Juniperus" }
-  },
-  "Ficus (Benjamina/Retusa)": {
-    es: { luz: "Mucha luz brillante; puede interior luminoso.", riego: "Ritmo estable, evita encharcar.", abono: "Primavera a otoño cada 2–3 semanas.", poda: "Formación agresiva tolerada en clima cálido.", sustrato: "Poroso y aireado; drena rápido.", trasplante: "Cada 1–2 años." },
-    en: { luz: "Bright light; can be indoors if very bright.", riego: "Steady rhythm, avoid waterlogging.", abono: "Spring–autumn every 2–3 weeks.", poda: "Aggressive shaping tolerated in warm climates.", sustrato: "Porous & airy; fast drainage.", trasplante: "Every 1–2 years." },
-    wiki: { es: "Ficus_microcarpa", en: "Ficus_microcarpa" },
-    inspireTerm: { es: "bonsái Ficus retusa", en: "bonsai Ficus retusa" }
+  // 3) empieza con…
+  if (!hit) {
+    hit = speciesDB.species.find(sp => norm(sp.scientific_name).startsWith(n));
   }
-}
-const SPECIES_LIST = Object.keys(CARE_LIBRARY)
 
-/* ───────────────────── Checklist / Registro ───────────────────── */
-const DEFAULT_TASKS = [
-  { key:'riego', labelES:'Riego', labelEN:'Watering', freq:2 },
-  { key:'abono', labelES:'Abono', labelEN:'Fertilizing', freq:14 },
-  { key:'poda', labelES:'Poda/Pinzado', labelEN:'Pruning/Pinching', freq:30 },
-  { key:'rotacion', labelES:'Rotación', labelEN:'Pot rotation', freq:7 },
-  { key:'plagas', labelES:'Revisión de plagas', labelEN:'Pest check', freq:7 },
-]
-function initTasks(){ return DEFAULT_TASKS.map(t=>({ ...t, lastDone:null })) }
-function nextDueLabel(tasks, lang){
-  const out = {}
-  tasks.forEach(t=>{
-    if(!t.lastDone){ out[t.key] = `${STR[lang].never} · ${STR[lang].every} ${t.freq} ${STR[lang].days}`; return }
-    const last = new Date(t.lastDone)
-    const due = new Date(last.getTime()+t.freq*24*3600*1000)
-    const days = Math.ceil((due - new Date())/(24*3600*1000))
-    out[t.key] = days<=0 ? STR[lang].overdue : `${days} ${STR[lang].days}`
-  })
-  return out
+  // 4) fallback por género
+  if (!hit) {
+    const genus = n.split(' ')[0];
+    if (genus) {
+      const candidates = speciesDB.species.filter(sp => norm(sp.scientific_name).startsWith(genus + ' '));
+      if (candidates.length) {
+        hit = { ...candidates[0], _genusFallback: true };
+      }
+    }
+  }
+
+  return hit || null;
 }
 
-/* ─────────────────────────── Logros ─────────────────────────── */
-function defaultAch(){ return { firstTree:false, firstWater:false, fiveCares:false, beforeAfter:false, careCount:0 } }
+/* ============== Open-Meteo (geocoding/astronomía) ============== */
+async function geocodeCity(query, lang = 'es') {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=${lang}&format=json`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('No se pudo consultar geocoding');
+  const j = await r.json();
+  if (!j.results || !j.results.length) throw new Error('No encontrado');
+  const { latitude, longitude, timezone, country, name, admin1 } = j.results[0];
+  return { lat: latitude, lon: longitude, tz: timezone, country, city: name, region: admin1 || '' };
+}
+async function reverseGeocode(lat, lon, lang = 'es') {
+  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=${lang}`;
+  const r = await fetch(url);
+  const j = await r.json();
+  const res = j.results?.[0] || {};
+  return { tz: res.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone, country: res.country || '', city: res.name || res.admin1 || '', region: res.admin1 || '' };
+}
+async function getDeviceLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error('Geolocalización no disponible'));
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      (err) => reject(err),
+      { enableHighAccuracy: true, timeout: 12000 }
+    );
+  });
+}
+async function loadAstronomy(lat, lon, tz) {
+  const cacheKey = `astro_${lat.toFixed(3)}_${lon.toFixed(3)}_${tz}`;
+  const cached = getCache(cacheKey);
+  if (cached) return cached;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=sunrise,sunset,moon_phase,moonrise,moonset&timezone=${encodeURIComponent(tz)}`;
+  const r = await fetch(url);
+  const j = await r.json();
+  setCache(cacheKey, j.daily, 24);
+  return j.daily;
+}
 
-/* ────────────────────────── UI helpers ───────────────────────── */
-function Section({title, children, right}){
+/* ============== Tiempo / fases ============== */
+function moonLabel(x) {
+  if (x === null || x === undefined) return '';
+  if (x < 0.03 || x > 0.97) return 'Luna nueva';
+  if (x < 0.22) return 'Creciente (c.)';
+  if (x < 0.28) return 'Cuarto creciente';
+  if (x < 0.47) return 'Gibosa creciente';
+  if (x < 0.53) return 'Luna llena';
+  if (x < 0.72) return 'Gibosa menguante';
+  if (x < 0.78) return 'Cuarto menguante';
+  return 'Menguante (c.)';
+}
+const hemisphereFromLat = (lat) => (lat >= 0 ? 'N' : 'S');
+
+/* ============== Ventanas genéricas (fallback) ============== */
+const GENERIC_WINDOWS = {
+  repot: { N: [2, 3], S: [8, 9] },               // fin de invierno/inicio primavera
+  structural_prune: { N: [1, 2, 11, 12], S: [5, 6, 7, 8] }, // dormancia
+  defoliation: { N: [6, 7], S: [12, 1] },        // avanzado
+  wiring: { N: [2, 3, 10, 11], S: [4, 5, 8, 9] } // flexible
+};
+const monthsFor = (action, hemi) => GENERIC_WINDOWS[action]?.[hemi] || [];
+function lunarOk(action, moonPhase) {
+  if (moonPhase === null || moonPhase === undefined) return true;
+  if (action === 'structural_prune') return (moonPhase >= 0.50); // menguante
+  if (action === 'repot') return !(moonPhase > 0.45 && moonPhase < 0.55); // evitar llena
+  return true;
+}
+
+/* ============== Imagen: compresión simple a JPEG ============== */
+async function compressImage(file, maxW = 1600, quality = 0.85) {
+  const img = document.createElement('img');
+  const url = URL.createObjectURL(file);
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  const scale = Math.min(1, maxW / img.width);
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
+  URL.revokeObjectURL(url);
+  return dataUrl;
+}
+
+/* ============== UI básicos ============== */
+function Section({ title, right, children }) {
   return (
-    <div style={{margin:'18px 0'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <h3 style={{margin:'6px 0'}}>{title}</h3>
+    <section style={{ margin: '16px 0', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 14 }}>
+      <div style={{ padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9' }}>
+        <h3 style={{ margin: 0, fontSize: 16 }}>{title}</h3>
         {right}
       </div>
-      <div>{children}</div>
-    </div>
-  )
+      <div style={{ padding: 12 }}>{children}</div>
+    </section>
+  );
 }
-function Pill({children}){ return <span style={{fontSize:12, padding:'4px 8px', background:'#eef2ff', borderRadius:999, marginRight:6}}>{children}</span> }
+const Chip = ({ children, color = '#e2e8f0' }) =>
+  <span style={{ background: color, borderRadius: 999, padding: '2px 10px', fontSize: 12 }}>{children}</span>;
 
-/* ───────────────────────────── App ───────────────────────────── */
-export default function App(){
-  const [lang, setLang] = useState(localStorage.getItem(LS_LANG) || 'es')
-  const [data, setData] = useState(()=> {
-    try{ return JSON.parse(localStorage.getItem(LS_KEY)) || [] }catch{ return [] }
-  })
-  const [ach, setAch] = useState(()=> {
-    try{ return JSON.parse(localStorage.getItem(LS_ACH)) || defaultAch() }catch{ return defaultAch() }
-  })
-  const [query,setQuery]=useState('')
-  const [filter,setFilter]=useState('all')
-  const [showNew,setShowNew]=useState(false)
-  const [editing,setEditing]=useState(null)
+function Button({ children, onClick, kind = 'primary', ...rest }) {
+  const palette = ({
+    primary: { bg: '#2563eb', fg: '#fff' },
+    ghost: { bg: '#f8fafc', fg: '#0f172a' },
+    warn: { bg: '#f97316', fg: '#fff' },
+    ok: { bg: '#059669', fg: '#fff' },
+  })[kind];
+  return (
+    <button onClick={onClick} {...rest}
+      style={{ background: palette.bg, color: palette.fg, border: 'none', borderRadius: 10, padding: '8px 12px', cursor: 'pointer' }}>
+      {children}
+    </button>
+  );
+}
+function Modal({ open, onClose, title, children, footer }) {
+  if (!open) return null;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', zIndex: 40, display: 'grid', placeItems: 'center', padding: 12 }}>
+      <div style={{ width: 'min(920px, 96vw)', maxHeight: '90vh', overflow: 'auto', borderRadius: 16, background: '#fff', boxShadow: '0 10px 40px rgba(2,6,23,0.25)' }}>
+        <div style={{ padding: 14, borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong style={{ fontSize: 18 }}>{title}</strong>
+          <button onClick={onClose} style={{ background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ padding: 14 }}>{children}</div>
+        {footer && <div style={{ padding: 14, borderTop: '1px solid #f1f5f9' }}>{footer}</div>}
+      </div>
+    </div>
+  );
+}
 
-  // Guardados
-  useEffect(() => { localStorage.setItem(LS_LANG, lang) }, [lang])
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(data))
-    } catch (e) {
-      console.warn('Error guardando en localStorage', e)
-      alert('Tu colección es grande o la foto es pesada. Usa imágenes más livianas o elimina alguna foto para seguir guardando.')
-    }
-  }, [data])
-  useEffect(() => {
-    try {
-      localStorage.setItem(LS_ACH, JSON.stringify(ach))
-    } catch (e) {
-      console.warn('Error guardando logros', e)
-    }
-  }, [ach])
+/* ============== Wizard de estilos ============== */
+function StyleWizard({ open, onClose, stylesDB, onPick }) {
+  const [q, setQ] = useState({ recto: false, curvas: false, inclinacion: 0, ramaCae: false, copaArriba: false, ramifina: false, viento: false });
 
-  const filtered = useMemo(()=>{
-    const q = query.trim().toLowerCase()
-    return data.filter(b=>{
-      const okSpecies = filter==='all' || b.species===filter
-      const okQ = !q || [b.name,b.species,b.location,b.notes].join(' ').toLowerCase().includes(q)
-      return okSpecies && okQ
-    })
-  },[data,query,filter])
-
-  function addBonsai(b){
-    setData(prev=>[b,...prev])
-    if(!ach.firstTree) setAch({...ach, firstTree:true})
+  function score(est) {
+    let s = 0;
+    if (q.recto) s += est.id === 'chokkan' ? 3 : 0;
+    if (q.curvas) s += est.id === 'moyogi' ? 3 : 0;
+    if (q.inclinacion >= 25) s += est.id === 'shakkan' ? 3 : 0;
+    if (q.ramaCae) s += est.id === 'kengai' ? 4 : (est.id === 'han_kengai' ? 3 : 0);
+    if (q.copaArriba) s += est.id === 'bunjin' ? 3 : 0;
+    if (q.ramifina && est.id === 'hokidachi') s += 3;
+    if (q.viento && est.id === 'fukinagashi') s += 3;
+    return s;
   }
-  function updateBonsai(id, patch){
-    setData(prev=>prev.map(b=>b.id===id?{...b, ...patch}:b))
-  }
-  function addHistory(id, item){
-    setData(prev=>prev.map(b=> b.id===id ? {...b, history:[item,...(b.history||[])]} : b))
-  }
-  function logCare(id, key){
-    setData(prev=> prev.map(b=>{
-      if(b.id!==id) return b
-      const tasks = (b.tasks||[]).map(t=> t.key===key ? {...t, lastDone: nowISO()} : t)
-      return {...b, tasks}
-    }))
-    const lbl = key==='riego' ? (lang==='es'?'Riego':'Watering') : key==='abono' ? (lang==='es'?'Abono':'Fertilizing') : key
-    addHistory(id, { id:uid(), type:'care', action:key, label:lbl, at: nowISO() })
-    const newCount = ach.careCount + 1
-    setAch(a=>{
-      const up = {...a, careCount:newCount}
-      if(key==='riego' && !a.firstWater) up.firstWater = true
-      if(newCount>=5 && !a.fiveCares) up.fiveCares = true
-      return up
-    })
-  }
+  const ranked = useMemo(() => {
+    if (!stylesDB?.estilos) return [];
+    const arr = stylesDB.estilos.map(e => ({ ...e, _score: score(e) }));
+    return arr.sort((a, b) => b._score - a._score).slice(0, 3);
+  }, [q, stylesDB]);
 
   return (
-    <div style={{maxWidth:980, margin:'0 auto', padding:'20px 16px 80px'}}>
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between', gap:12, flexWrap:'wrap'}}>
-        <div>
-          <h1 style={{margin:'4px 0'}}>{STR[lang].app_title}</h1>
-          <div style={{color:'#64748b'}}>{STR[lang].app_tag}</div>
-        </div>
-        <div style={{display:'flex', gap:8, alignItems:'center'}}>
-          <label style={{fontSize:12, color:'#64748b'}}>{STR[lang].lang_label}</label>
-          <select value={lang} onChange={e=>setLang(e.target.value)}>
-            <option value="es">Español</option>
-            <option value="en">English</option>
-          </select>
-          <button onClick={()=>setShowNew(true)} style={{padding:'8px 12px', borderRadius:8, background:'#0ea5e9', color:'#fff', border:'none'}}>{STR[lang].new}</button>
-        </div>
-      </div>
+    <Modal open={open} onClose={onClose} title="Sugerir estilo">
+      {!stylesDB ? <div>Cargando estilos…</div> : (
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 12 }}>
+            <label><input type="checkbox" checked={q.recto} onChange={e => setQ({ ...q, recto: e.target.checked })} /> Tronco recto con conicidad</label>
+            <label><input type="checkbox" checked={q.curvas} onChange={e => setQ({ ...q, curvas: e.target.checked })} /> Tronco sinuoso con curvas</label>
+            <label> Inclinación (°)
+              <input type="range" min={0} max={80} value={q.inclinacion} onChange={e => setQ({ ...q, inclinacion: +e.target.value })} /> {q.inclinacion}°
+            </label>
+            <label><input type="checkbox" checked={q.ramaCae} onChange={e => setQ({ ...q, ramaCae: e.target.checked })} /> ¿Rama/ápice puede caer bajo el borde?</label>
+            <label><input type="checkbox" checked={q.copaArriba} onChange={e => setQ({ ...q, copaArriba: e.target.checked })} /> ¿Masa de follaje muy arriba?</label>
+            <label><input type="checkbox" checked={q.ramifina} onChange={e => setQ({ ...q, ramifina: e.target.checked })} /> ¿Caducifolio con ramificación fina?</label>
+            <label><input type="checkbox" checked={q.viento} onChange={e => setQ({ ...q, viento: e.target.checked })} /> ¿Todo empuja a un lado (viento)?</label>
+          </div>
 
-      {/* Search */}
-      <div style={{display:'flex', gap:8, marginTop:16, flexWrap:'wrap'}}>
-        <input placeholder={STR[lang].search} value={query} onChange={e=>setQuery(e.target.value)}
-               style={{flex:'1 1 260px', padding:'10px 12px', border:'1px solid #e5e7eb', borderRadius:8}}/>
-        <select value={filter} onChange={e=>setFilter(e.target.value)} style={{padding:'10px 12px', borderRadius:8}}>
-          <option value="all">{STR[lang].all_species}</option>
-          {SPECIES_LIST.map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-      </div>
-
-      {/* Achievements */}
-      <Section title={STR[lang].ach_title}>
-        <div style={{display:'flex', flexWrap:'wrap', gap:8}}>
-          <Pill>{ach.firstTree ? '✅' : '⬜️'} {STR[lang].ach_first_tree}</Pill>
-          <Pill>{ach.firstWater ? '✅' : '⬜️'} {STR[lang].ach_first_water}</Pill>
-          <Pill>{ach.fiveCares ? '✅' : '⬜️'} {STR[lang].ach_5_cares}</Pill>
-          <Pill>{ach.beforeAfter ? '✅' : '⬜️'} {STR[lang].ach_before_after}</Pill>
-        </div>
-      </Section>
-
-      {/* List */}
-      {filtered.length===0 ? (
-        <div style={{textAlign:'center', padding:'48px 12px', color:'#64748b'}}>
-          <h3 style={{marginBottom:6}}>{STR[lang].empty_title}</h3>
-          <div>{STR[lang].empty_sub}</div>
-        </div>
-      ) : (
-        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(260px,1fr))', gap:12, marginTop:8}}>
-          {filtered.map(b=> <BonsaiCard key={b.id} b={b} lang={lang}
-                                onOpen={()=>setEditing(b)}
-                                onLog={(k)=>logCare(b.id,k)} />)}
+          <div>
+            <h4 style={{ margin: '12px 0 6px' }}>Recomendados</h4>
+            {!ranked.length ? <div>Marca algunas características para ver sugerencias.</div> : (
+              <div style={{ display: 'grid', gap: 10 }}>
+                {ranked.map(e => (
+                  <div key={e.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <strong>{e.nombre}</strong> <Chip>{e.dificultad === 1 ? 'Fácil' : e.dificultad === 2 ? 'Media-' : e.dificultad === 3 ? 'Media' : e.dificultad === 4 ? 'Media+' : 'Avanzada'}</Chip>
+                      </div>
+                      <Button kind="ok" onClick={() => { onPick?.(e); onClose(); }}>Usar estilo</Button>
+                    </div>
+                    <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}>{e.descripcion}</div>
+                    {e.reglas_clave?.length ? (
+                      <ul style={{ margin: '6px 0 0 18px', fontSize: 13 }}>
+                        {e.reglas_clave.map((r, i) => <li key={i}>{r}</li>)}
+                      </ul>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
-
-      {/* Modals */}
-      {showNew && <NewBonsaiModal lang={lang} onClose={()=>setShowNew(false)} onSave={addBonsai} />}
-      {editing && <BonsaiModal lang={lang} bonsai={editing} onClose={()=>setEditing(null)}
-                               onUpdate={(p)=>updateBonsai(editing.id,p)}
-                               onHistory={(i)=>addHistory(editing.id,i)}
-                               onAch={(p)=>setAch(a=>({...a,...p}))}
-                              />}
-    </div>
-  )
+    </Modal>
+  );
 }
 
-/* ─────────────────────────── Card ─────────────────────────── */
-function BonsaiCard({b, lang, onOpen, onLog}){
-  const care = nextDueLabel(b.tasks||[], lang)
-  const t = (k)=> ({es:{
-      riego:'Riego', abono:'Abono', poda:'Poda', rotacion:'Rotación', plagas:'Plagas'
-    }, en:{ riego:'Water', abono:'Fertilize', poda:'Prune', rotacion:'Rotate', plagas:'Pests'}}[lang][k])
+/* ============== Modal Ajustes (ubicación) ============== */
+function SettingsModal({ open, onClose, settings, setSettings }) {
+  const [query, setQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
 
-  return (
-    <div style={{border:'1px solid #e5e7eb', borderRadius:12, padding:12, background:'#fff'}}>
-      <div style={{display:'flex', gap:12}}>
-        <div style={{width:72, height:72, borderRadius:8, background:'#f1f5f9', overflow:'hidden'}}>
-          {b.photo ? <img src={b.photo} alt="" style={{width:'100%', height:'100%', objectFit:'cover'}}/> :
-            <div style={{fontSize:11, color:'#94a3b8', display:'flex',alignItems:'center',justifyContent:'center',height:'100%'}}>No photo</div>}
-        </div>
-        <div style={{flex:1}}>
-          <div style={{fontWeight:600}}>{b.name||'—'}</div>
-          <div style={{fontSize:12, color:'#64748b'}}>{b.species|| (lang==='es'? 'Especie por confirmar' : 'Species to confirm')}</div>
-          <div style={{marginTop:6, display:'flex', gap:6, flexWrap:'wrap'}}>
-            {Object.keys(care).slice(0,3).map(k=><Pill key={k}>{t(k)}: {care[k]}</Pill>)}
-          </div>
-        </div>
-      </div>
-      <div style={{display:'flex', gap:8, marginTop:10}}>
-        <button onClick={()=>onLog('riego')} style={btn('emerald')}>{STR[lang].log_water}</button>
-        <button onClick={()=>onLog('abono')}  style={btn('amber')}>{STR[lang].log_fert}</button>
-        <button onClick={onOpen} style={{...btn('slate'), flex:1}}>Detalle</button>
-      </div>
-    </div>
-  )
-}
-
-/* ─────────────────────── New Modal ─────────────────────── */
-function NewBonsaiModal({lang, onClose, onSave}){
-  const [name,setName]=useState('')
-  const [species,setSpecies]=useState('')
-  const [location,setLocation]=useState('sun')
-  const [notes,setNotes]=useState('')
-  const [photo,setPhoto]=useState('')
-
-  const suggestions = useMemo(()=> SPECIES_LIST.filter(s=> s.toLowerCase().includes(notes.toLowerCase()) || s.toLowerCase().includes(name.toLowerCase())).slice(0,5), [notes,name])
-
-  async function handleFile(e){
-    const f = e.target.files?.[0]; if(!f) return
-    try{
-      const small = await compressImage(f, 1280, 0.82)
-      setPhoto(small)
-    }catch(err){
-      console.warn('No se pudo comprimir la imagen', err)
-      alert('No se pudo procesar la imagen. Intenta con otra foto.')
-    }
+  async function handleSearch() {
+    setSaving(true); setError('');
+    try {
+      const geo = await geocodeCity(query, 'es');
+      const astro = await loadAstronomy(geo.lat, geo.lon, geo.tz);
+      setSettings({ ...settings, location: geo, astro, hemi: hemisphereFromLat(geo.lat) });
+      onClose?.();
+    } catch (e) { setError(e.message || 'Error'); }
+    finally { setSaving(false); }
   }
-  function save(){
-    onSave({
-      id: uid(),
-      name, species: species||'', location,
-      notes, photo,
-      createdAt: nowISO(),
-      tasks: initTasks(),
-      history: [],
-      photos: photo ? [{id:uid(), at:nowISO(), src:photo, note:''}] : []
-    })
-    onClose()
+  async function useDevice() {
+    setSaving(true); setError('');
+    try {
+      const dev = await getDeviceLocation();
+      const rev = await reverseGeocode(dev.lat, dev.lon, 'es');
+      const geo = { lat: dev.lat, lon: dev.lon, tz: rev.tz, country: rev.country, city: rev.city, region: rev.region };
+      const astro = await loadAstronomy(geo.lat, geo.lon, geo.tz);
+      setSettings({ ...settings, location: geo, astro, hemi: hemisphereFromLat(geo.lat) });
+      onClose?.();
+    } catch (e) { setError(e.message || 'Error'); }
+    finally { setSaving(false); }
   }
 
   return (
-    <Modal onClose={onClose} title={STR[lang].new_bonsai} lang={lang}>
-      <div style={grid2}>
-        <div>
-          <label className="lbl">{STR[lang].name}</label>
-          <input className="in" value={name} onChange={e=>setName(e.target.value)}/>
+    <Modal open={open} onClose={onClose} title="Ubicación y calendario">
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+          <input placeholder="Ej: Lima, Perú" value={query} onChange={e => setQuery(e.target.value)}
+                 style={{ padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+          <Button onClick={handleSearch} disabled={!query || saving}>Buscar</Button>
         </div>
         <div>
-          <label className="lbl">{STR[lang].species}</label>
-          <input className="in" value={species} onChange={e=>setSpecies(e.target.value)} list="speciesList"/>
-          <datalist id="speciesList">
-            {SPECIES_LIST.map(s=><option key={s} value={s}/>)}
-          </datalist>
+          <Button kind="ghost" onClick={useDevice} disabled={saving}>Usar mi ubicación</Button>
         </div>
-        <div>
-          <label className="lbl">{STR[lang].location}</label>
-          <select className="in" value={location} onChange={e=>setLocation(e.target.value)}>
-            <option value="sun">{STR[lang].loc_sun}</option>
-            <option value="pshade">{STR[lang].loc_pshade}</option>
-            <option value="bright">{STR[lang].loc_bright}</option>
-          </select>
-        </div>
-        <div>
-          <label className="lbl">{STR[lang].notes_ident}</label>
-          <input className="in" value={notes} onChange={e=>setNotes(e.target.value)} placeholder={STR[lang].notes_ph}/>
-          {suggestions.length>0 && (
-            <div style={{marginTop:4, fontSize:12}}>
-              <b>{STR[lang].suggest}:</b> {suggestions.join(' · ')}
-            </div>
-          )}
-        </div>
-        <div>
-          <label className="lbl">{STR[lang].photo}</label>
-          <input type="file" accept="image/*" onChange={handleFile}/>
-          <div style={{marginTop:6, width:'100%', maxWidth:220, borderRadius:8, overflow:'hidden', background:'#f1f5f9'}}>
-            {photo ? <img src={photo} style={{width:'100%', display:'block'}}/> : <div style={{padding:12, fontSize:12, color:'#94a3b8'}}>{STR[lang].none_photo}</div>}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={!!settings.useLunar} onChange={e => setSettings({ ...settings, useLunar: e.target.checked })} />
+          Activar calendario lunar (experimental)
+        </label>
+        {error && <div style={{ color: '#b91c1c' }}>{error}</div>}
+        {settings?.location && (
+          <div style={{ fontSize: 13, color: '#475569' }}>
+            Ubicación: <strong>{settings.location.city}</strong>, {settings.location.country} · TZ {settings.location.tz} · Hemi {settings.hemi}
           </div>
-        </div>
-      </div>
-      <div style={{display:'flex', gap:8, marginTop:12}}>
-        <button onClick={save} style={btn('emerald')}>{STR[lang].save}</button>
-        <button onClick={onClose} style={btn('slate')}>{STR[lang].cancel}</button>
+        )}
       </div>
     </Modal>
-  )
+  );
 }
 
-/* ────────────────────── Detail Modal ────────────────────── */
-function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
-  const [tab, setTab] = useState('care') // care | checklist | photos | learn | tips
-  const lib = CARE_LIBRARY[bonsai.species] || null
+/* ============== Modal: Nuevo Bonsái ============== */
+function NewBonsaiModal({ open, onClose, onSave, speciesList }) {
+  const [name, setName] = useState('');
+  const [species, setSpecies] = useState('');
+  const [notes, setNotes] = useState('');
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
 
-  const [wiki, setWiki] = useState({loading:false, title:'', extract:'', url:''})
-  const [pics, setPics] = useState([])
-
-  useEffect(()=>{
-    if(tab!=='learn') return
-    if(!lib) return
-    const title = lib.wiki?.[lang] || lib.wiki?.es || ''
-    if(!title) return
-    setWiki({loading:true})
-    fetch(`https://${lang==='es'?'es':'en'}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
-      .then(r=>r.json())
-      .then(j=> setWiki({loading:false, title:j.title, extract:j.extract, url:j.content_urls?.desktop?.page || j.content_urls?.mobile?.page || ''}))
-      .catch(()=> setWiki({loading:false, title:'', extract:'', url:''}))
-
-    const term = lib.inspireTerm?.[lang] || lib.inspireTerm?.es || bonsai.species
-    fetch(`https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrlimit=8&prop=imageinfo&iiprop=url`)
-      .then(r=>r.json())
-      .then(j=>{
-        const arr = Object.values(j.query?.pages||{}).map(p=> p.imageinfo?.[0]?.url).filter(Boolean)
-        setPics(arr)
-      }).catch(()=>setPics([]))
-  },[tab, lang, bonsai.species])
-
-  function mark(taskKey){
-    onUpdate({ tasks: (bonsai.tasks||[]).map(t=> t.key===taskKey ? {...t, lastDone:nowISO()} : t) })
-    onHistory({ id:uid(), type:'care', action:taskKey, label:taskKey, at:nowISO() })
+  async function handleSave() {
+    setBusy(true);
+    try {
+      let photo = null;
+      if (file) photo = await compressImage(file, 1600, 0.85);
+      const item = {
+        id: 'b' + Math.random().toString(36).slice(2, 9),
+        name: name.trim() || species || 'Mi bonsái',
+        species: species.trim(),
+        createdAt: new Date().toISOString(),
+        notes: notes.trim(),
+        photo,
+        photos: photo ? [{ id: 'p1', url: photo, at: new Date().toISOString() }] : [],
+        tasks: [],
+        history: [],
+        style: null,
+      };
+      onSave?.(item);
+      onClose?.();
+    } finally { setBusy(false); }
   }
-
-  async function addPhoto(file, note){
-    try{
-      const small = await compressImage(file, 1280, 0.82)
-      const entry = { id:uid(), at:nowISO(), src:small, note:note||'' }
-      const list = [entry, ...(bonsai.photos||[])]
-      onUpdate({ photos:list })
-      onHistory({ id:uid(), type:'photo', at:nowISO(), note })
-      if(list.length>=2) onAch({ beforeAfter:true })
-    }catch(err){
-      console.warn('No se pudo agregar la foto', err)
-      alert('La foto es muy pesada o no se pudo procesar.')
-    }
-  }
-
-  function shareImage(){
-    const imgSrc = (bonsai.photos?.[0]?.src) || bonsai.photo
-    const cnv = document.createElement('canvas')
-    const W=1080,H=1350; cnv.width=W; cnv.height=H
-    const ctx = cnv.getContext('2d')
-    ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,W,H)
-    function draw(){
-      if(img){
-        const r = Math.min((W-160)/img.width, (H-540)/img.height)
-        const w = img.width*r, h = img.height*r
-        const x = (W-w)/2, y = 140
-        ctx.drawImage(img, x,y,w,h)
-      } else {
-        ctx.fillStyle='#1e293b'; ctx.fillRect(80,140,W-160,H-540)
-      }
-      ctx.fillStyle='#10b981'; ctx.font='bold 56px system-ui, -apple-system'
-      ctx.fillText('ZenBonsai', 80, 88)
-      ctx.fillStyle='#e2e8f0'; ctx.font='bold 54px system-ui'
-      ctx.fillText(bonsai.name || 'Mi bonsái', 80, H-300)
-      ctx.fillStyle='#94a3b8'; ctx.font='28px system-ui'
-      ctx.fillText((bonsai.species|| (lang==='es'?STR[lang].species_tbc:'Species to confirm')), 80, H-252)
-      ctx.fillStyle='#64748b'; ctx.font='24px system-ui'
-      ctx.fillText((lang==='es'?'Crecimiento · Checklist · Antes/Después':'Growth · Checklist · Before/After'), 80, H-210)
-      const url = 'zenbonsai.vercel.app'
-      ctx.fillStyle='#94a3b8'; ctx.font='24px system-ui'; ctx.fillText(url, 80, H-170)
-
-      const data = cnv.toDataURL('image/png')
-      const a = document.createElement('a'); a.href=data; a.download='ZenBonsai-share.png'; a.click()
-      if(navigator.share){
-        try{ fetch(data).then(r=>r.blob()).then(b=>{
-          const file = new File([b], 'ZenBonsai.png', {type:'image/png'})
-          navigator.share({ files:[file], title:'ZenBonsai', text:bonsai.name||'Mi bonsái' })
-        }) }catch{}
-      }
-    }
-    let img = null
-    if(imgSrc){ img = new Image(); img.crossOrigin='anonymous'; img.onload=draw; img.src=imgSrc } else { draw() }
-  }
-
-  const care = nextDueLabel(bonsai.tasks||[], lang)
 
   return (
-    <Modal onClose={onClose} title={bonsai.name || 'Bonsái'} lang={lang}>
-      {/* Tabs */}
-      <div style={{display:'flex', gap:8, flexWrap:'wrap', marginBottom:8}}>
-        {['care','checklist','photos','learn','tips'].map(k=>
-          <button key={k} onClick={()=>setTab(k)}
-                  style={{padding:'8px 10px', borderRadius:999, border:'1px solid #e5e7eb',
-                          background: tab===k? '#0ea5e9' : '#fff', color: tab===k? '#fff':'#334155'}}>
-            {k==='care'?STR[lang].care_tab: k==='checklist'?STR[lang].checklist_tab: k==='photos'?STR[lang].photos_tab: k==='learn'?STR[lang].learn_tab: STR[lang].tips_tab}
-          </button>)}
-        <div style={{flex:1}}/>
-        <button onClick={shareImage} style={btn('emerald')}>{STR[lang].share}</button>
+    <Modal open={open} onClose={onClose} title="Registrar bonsái"
+      footer={<div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Button kind="ghost" onClick={onClose}>Cancelar</Button>
+        <Button onClick={handleSave} disabled={busy}>Guardar</Button>
+      </div>}>
+      <div style={{ display: 'grid', gap: 10 }}>
+        <label>Nombre
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="Opcional"
+                 style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+        </label>
+        <label>Especie (científico)
+          <input value={species} onChange={e => setSpecies(e.target.value)} placeholder="Ej: Juniperus chinensis" list="speciesList"
+                 style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+          <datalist id="speciesList">
+            {(speciesList || []).map((s) => <option key={s} value={s} />)}
+          </datalist>
+        </label>
+        <label>Notas
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                    style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+        </label>
+        <label>Foto inicial (opcional)
+          <input type="file" accept="image/*" onChange={e => setFile(e.target.files?.[0] || null)} />
+        </label>
       </div>
+    </Modal>
+  );
+}
 
-      {tab==='care' && (
-        <div>
-          <div style={{display:'flex', gap:12}}>
-            <div style={{width:120, height:120, borderRadius:12, overflow:'hidden', background:'#f1f5f9'}}>
-              {bonsai.photo ? <img src={bonsai.photo} style={{width:'100%',height:'100%',objectFit:'cover'}}/> : <div style={{padding:12, fontSize:12, color:'#94a3b8'}}>{STR[lang].none_photo}</div>}
+/* ============== Próximos días sugeridos (ubicación) ============== */
+function NextDaysPanel({ settings }) {
+  if (!settings?.astro) return (
+    <Section title="Próximos días sugeridos" right={<Chip color="#fee2e2">Configura tu ubicación</Chip>}>
+      <div>Abre “Ubicación” para ver ventanas de trasplante, poda, etc., según tu hemisferio y (si quieres) fase lunar.</div>
+    </Section>
+  );
+
+  const { time, moon_phase } = settings.astro;
+  const hemi = settings.hemi || 'N';
+  const items = [];
+  for (let i = 0; i < time.length; i++) {
+    const date = time[i];
+    const m = Number(date.split('-')[1]);
+    const moon = moon_phase?.[i];
+    const actions = [];
+    if (monthsFor('repot', hemi).includes(m) && (!settings.useLunar || lunarOk('repot', moon))) actions.push('Trasplante');
+    if (monthsFor('structural_prune', hemi).includes(m) && (!settings.useLunar || lunarOk('structural_prune', moon))) actions.push('Poda estructural');
+    if (monthsFor('wiring', hemi).includes(m)) actions.push('Alambrado (revisar marcas)');
+    if (monthsFor('defoliation', hemi).includes(m)) actions.push('Defoliado parcial (avanzado)');
+    if (actions.length) items.push({ date, moon, actions });
+    if (items.length >= 21) break;
+  }
+
+  if (!items.length) return (
+    <Section title="Próximos días sugeridos">
+      <div>No hay acciones destacadas en las próximas 3 semanas para tu hemisferio. Aun así, sigue la fenología de tu árbol.</div>
+    </Section>
+  );
+
+  return (
+    <Section title="Próximos días sugeridos" right={<Chip>{settings.location?.city}, {settings.location?.country}</Chip>}>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {items.map((it, idx) => (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid #e5e7eb', borderRadius: 10, padding: '8px 10px' }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>{new Date(it.date).toLocaleDateString()}</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>{settings.useLunar ? `Luna: ${moonLabel(it.moon)}` : 'Lunar desactivado'}</div>
             </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:18, fontWeight:700}}>{bonsai.name}</div>
-              <div style={{fontSize:13, color:'#64748b', marginBottom:6}}>{bonsai.species || (lang==='es'?STR[lang].species_tbc:'Species to confirm')}</div>
-              <div style={{display:'flex', gap:6, flexWrap:'wrap'}}>
-                {Object.keys(care).map(k=> <Pill key={k}>{(k==='riego'&&lang==='es')?'Riego': (k==='abono'&&lang==='es')?'Abono' : k}: {care[k]}</Pill>)}
-              </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {it.actions.map((a, i) => <Chip key={i} color="#ecfeff">{a}</Chip>)}
             </div>
           </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
 
-          <Section title={STR[lang].history}>
-            {(bonsai.history||[]).length===0
-              ? <div style={{color:'#94a3b8'}}>{STR[lang].none_history}</div>
-              : <ul style={{paddingLeft:16, margin:0}}>
-                  {(bonsai.history||[]).map(h=> <li key={h.id} style={{marginBottom:6}}>
-                    <span style={{fontWeight:600}}>{h.type==='photo' ? '📷' : '✅'} {h.label || h.action}</span>
-                    <span style={{color:'#64748b'}}> · {fmt(h.at, lang)}</span>
-                  </li>)}
-                </ul>}
-          </Section>
+/* ============== Cuidados + Referencias (con fallback por género) ============== */
+function CardKV({ k, v }) {
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+      <div style={{ fontSize: 12, color: '#64748b' }}>{k}</div>
+      <div style={{ fontWeight: 600 }}>{v}</div>
+    </div>
+  );
+}
+
+function CareAndRefs({ speciesDB, speciesName, tipsDB }) {
+  const entry = useMemo(() => findSpeciesEntry(speciesDB, speciesName), [speciesDB, speciesName]);
+  if (!speciesName) return <div style={{ color: '#64748b' }}>Define la especie para ver cuidados y referencias.</div>;
+  if (!entry) return <div style={{ color: '#64748b' }}>No encontré esta especie en el catálogo. Usa el autocompletar o revisa la ortografía.</div>;
+
+  const care = entry.care || null;
+  const refs = entry.references || [];
+  const hasAny = care && Object.values(care).some(v => (v?.es || v?.en));
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {entry._genusFallback && (
+        <div style={{ background: '#fff8e1', border: '1px solid #facc15', padding: 10, borderRadius: 8 }}>
+          No hallé coincidencia exacta para <b>{speciesName}</b>. Te muestro recomendaciones generales del género <b>{entry.scientific_name.split(' ')[0]}</b>.
         </div>
       )}
 
-      {tab==='checklist' && (
-       <div>
-    {(bonsai.tasks || []).map((t) => {
-      return (
-        <div
-          key={t.key}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            border: '1px solid #e5e7eb',
-            borderRadius: 10,
-            padding: '10px 12px',
-            margin: '8px 0'
-          }}
-        >
-          <div>
-            <div style={{ fontWeight: 600 }}>
-              {lang === 'es' ? t.labelES : t.labelEN}
-            </div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>
-              {STR[lang].every} {t.freq} {STR[lang].days} ·{' '}
-              <b>{nextDueLabel([t], lang)[t.key]}</b>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => mark(t.key)}
-            style={btn('emerald')}
-          >
-            ✓
-          </button>
+      {hasAny ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 8 }}>
+          {care.light?.es && <CardKV k="Luz" v={care.light.es} />}
+          {care.watering?.es && <CardKV k="Riego" v={care.watering.es} />}
+          {care.substrate?.es && <CardKV k="Sustrato" v={care.substrate.es} />}
+          {care.fertilization?.es && <CardKV k="Abono" v={care.fertilization.es} />}
+          {care.pruning?.es && <CardKV k="Poda" v={care.pruning.es} />}
+          {care.repotting?.es && <CardKV k="Trasplante" v={care.repotting.es} />}
+          {care.wiring?.es && <CardKV k="Alambrado" v={care.wiring.es} />}
         </div>
-      );
-    })}
-  </div>
-)}
+      ) : (
+        <div style={{ color: '#475569' }}>
+          Aún no tenemos una ficha de cuidados específica para <b>{entry.scientific_name}</b>.
+          Aplica estos <b>tips generales</b> mientras tanto:
+          {tipsDB?.tips?.length > 0 && (
+            <ul style={{ marginTop: 8 }}>
+              {tipsDB.tips.slice(0, 5).map(t => <li key={t.id}><b>{t.title}</b>: {t.summary}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
 
+      <div>
+        <div style={{ fontWeight: 600, marginTop: 6, marginBottom: 4 }}>Referencias (libros/páginas)</div>
+        {refs.length ? (
+          <ul style={{ margin: '6px 0 0 18px' }}>
+            {refs.map((r, i) => <li key={i} style={{ fontSize: 13 }}>{r.title} — <em>{r.pages}</em></li>)}
+          </ul>
+        ) : <div style={{ fontSize: 13, color: '#94a3b8' }}>Sin referencias asociadas en esta especie.</div>}
+      </div>
+    </div>
+  );
+}
 
-      {tab==='photos' && (
-        <div>
-          <div style={{display:'flex', gap:8, alignItems:'center', margin:'8px 0'}}>
-            <input id="addphoto" type="file" accept="image/*" onChange={e=>{ const f=e.target.files?.[0]; if(!f) return; const note=prompt(STR[lang].photo_note_ph)||''; addPhoto(f,note) }}/>
+/* ============== Tips / Herramientas / Propagación ============== */
+function TipCards({ tipsDB }) {
+  if (!tipsDB?.tips?.length) return null;
+  return (
+    <Section title="Tips generales">
+      <div style={{ display: 'grid', gap: 10 }}>
+        {tipsDB.tips.map(t => (
+          <div key={t.id} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <strong>{t.title}</strong>
+              <Chip>{t.id}</Chip>
+            </div>
+            <div style={{ color: '#475569', marginTop: 6 }}>{t.summary}</div>
+            {t.details && <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>{t.details}</div>}
           </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+function ToolsList({ toolsDB }) {
+  if (!toolsDB?.length) return null;
+  return (
+    <Section title="Herramientas y usos">
+      <div style={{ display: 'grid', gap: 8 }}>
+        {toolsDB.map(tool => (
+          <div key={tool.key} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <strong>{tool.name_es}</strong>
+              <Chip>{tool.key}</Chip>
+            </div>
+            <div style={{ fontSize: 13, color: '#475569', marginTop: 6 }}><b>Uso:</b> {tool.usage}</div>
+            <div style={{ fontSize: 13, color: '#475569', marginTop: 4 }}><b>Por qué:</b> {tool.why}</div>
+            <div style={{ fontSize: 13, color: '#b45309', marginTop: 4 }}><b>Precauciones:</b> {tool.cautions}</div>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+function PropagationList({ propagationDB }) {
+  if (!propagationDB?.length) return null;
+  return (
+    <Section title="Propagación">
+      <div style={{ display: 'grid', gap: 8 }}>
+        {propagationDB.map(p => (
+          <div key={p.key} style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <strong>{p.title_es}</strong>
+              <Chip>{p.key}</Chip>
+            </div>
+            <div style={{ color: '#475569', marginTop: 6 }}>{p.summary_es}</div>
+            {p.tips_es && <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>{p.tips_es}</div>}
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
 
-          {(bonsai.photos||[]).length===0 ? (
-            <div style={{color:'#94a3b8'}}>{STR[lang].photos_empty}</div>
-          ) : (
-            <>
-              <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px,1fr))', gap:8}}>
-                {bonsai.photos.map(p=>(
-                  <figure key={p.id} style={{margin:0}}>
-                    <img src={p.src} style={{width:'100%', borderRadius:10, display:'block'}}/>
-                    <figcaption style={{fontSize:11,color:'#64748b', marginTop:4}}>{fmt(p.at,lang)} {p.note?`· ${p.note}`:''}</figcaption>
+/* ============== Tarjeta de Bonsái ============== */
+function BonsaiCard({ item, onUpdate, speciesDB, stylesDB, tipsDB }) {
+  const [tab, setTab] = useState('overview');
+  const fileRef = useRef();
+
+  const speciesList = useMemo(() => (speciesDB?.species || [])
+    .map(s => s.scientific_name)
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b)), [speciesDB]);
+
+  function update(patch) { onUpdate?.({ ...item, ...patch }); }
+
+  async function addPhoto(f) {
+    if (!f) return;
+    const url = await compressImage(f, 1600, 0.85);
+    const ph = { id: 'p' + Math.random().toString(36).slice(2, 7), url, at: new Date().toISOString() };
+    update({ photos: [...(item.photos || []), ph], photo: item.photo || url });
+  }
+
+  // Checklist base + especie
+  const speciesEntry = useMemo(() => findSpeciesEntry(speciesDB, item.species), [speciesDB, item.species]);
+  const defaults = useMemo(() => ([
+    { key: 'riego', label: 'Riego', freq: 2 },
+    { key: 'abono', label: 'Abono', freq: 14 },
+    { key: 'poda', label: 'Poda/Pinzado', freq: 30 },
+    { key: 'rotacion', label: 'Rotación', freq: 7 },
+    { key: 'plagas', label: 'Revisión plagas', freq: 7 },
+  ]), []);
+  const mergedTasks = useMemo(() => {
+    const extra = (speciesEntry?.checklist_defaults || [])
+      .map(t => ({ key: t.key, label: t.labelES || t.labelEN || t.key, freq: t.freq_days || 7 }));
+    const map = new Map();
+    for (const t of defaults) map.set(t.key, t);
+    for (const t of extra) map.set(t.key, t);
+    const stateMap = new Map((item.tasks || []).map(t => [t.key, t]));
+    return Array.from(map.values()).map(t => ({ ...t, lastDone: stateMap.get(t.key)?.lastDone || null }));
+  }, [speciesEntry, item.tasks, defaults]);
+
+  function markTask(key) {
+    const now = new Date().toISOString();
+    const next = (item.tasks || []).filter(t => t.key !== key);
+    next.push({ key, lastDone: now });
+    const hist = [{ at: now, type: 'task', key }, ...(item.history || [])];
+    update({ tasks: next, history: hist });
+  }
+
+  const [openStyle, setOpenStyle] = useState(false);
+
+  return (
+    <div style={{ border: '1px solid #e5e7eb', borderRadius: 16, overflow: 'hidden', background: '#fff' }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: 12, borderBottom: '1px solid #f1f5f9', background: '#f8fafc' }}>
+        <img src={item.photo || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48"></svg>'}
+             alt="cover" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 8, background: '#e2e8f0' }} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 700 }}>{item.name}</div>
+          <div style={{ fontSize: 12, color: '#64748b' }}>{item.species || 'Especie no definida'}</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Button kind="ghost" onClick={() => setTab('overview')}>Resumen</Button>
+          <Button kind="ghost" onClick={() => setTab('care')}>Cuidados</Button>
+          <Button kind="ghost" onClick={() => setTab('checklist')}>Checklist</Button>
+          <Button kind="ghost" onClick={() => setTab('photos')}>Fotos</Button>
+          <Button kind="ghost" onClick={() => setTab('style')}>Estilos</Button>
+        </div>
+      </div>
+
+      <div style={{ padding: 12 }}>
+        {tab === 'overview' && (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <Section title="Datos básicos">
+              <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))' }}>
+                <div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Nombre</div>
+                  <input value={item.name} onChange={e => update({ name: e.target.value })}
+                         style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Especie (científico)</div>
+                  <input value={item.species} list="speciesAll" onChange={e => update({ species: e.target.value })}
+                         placeholder="Ej: Ficus microcarpa"
+                         style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+                  <datalist id="speciesAll">{speciesList.map(s => <option key={s} value={s} />)}</datalist>
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>Notas</div>
+                  <textarea value={item.notes || ''} onChange={e => update({ notes: e.target.value })}
+                            rows={3} style={{ width: '100%', padding: 10, borderRadius: 10, border: '1px solid #e5e7eb' }} />
+                </div>
+              </div>
+            </Section>
+
+            <Section title="Aprende & Planifica">
+              <div style={{ fontSize: 13, color: '#475569' }}>
+                Ve a la pestaña <b>Cuidados</b> para ver las recomendaciones de tu especie y las <b>Referencias</b> de tus libros.
+              </div>
+            </Section>
+          </div>
+        )}
+
+        {tab === 'care' && (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <CareAndRefs speciesDB={speciesDB} speciesName={item.species} tipsDB={tipsDB} />
+            <TipCards tipsDB={tipsDB} />
+          </div>
+        )}
+
+        {tab === 'checklist' && (
+          <div>
+            {(mergedTasks || []).map((t) => (
+              <div key={t.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                         border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 12px', margin: '8px 0' }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{t.label}</div>
+                  <div style={{ fontSize: 12, color: '#64748b' }}>
+                    Cada {t.freq} días {t.lastDone && <>· última: <b>{new Date(t.lastDone).toLocaleDateString()}</b></>}
+                  </div>
+                </div>
+                <Button kind="ok" onClick={() => markTask(t.key)}>✓</Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === 'photos' && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div>
+              <input ref={fileRef} type="file" accept="image/*" onChange={e => addPhoto(e.target.files?.[0])} />
+            </div>
+            {(!item.photos || !item.photos.length) ? (
+              <div style={{ color: '#64748b' }}>Aún no hay fotos. Agrega una para iniciar el historial.</div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 8 }}>
+                {item.photos.map(ph => (
+                  <figure key={ph.id} style={{ margin: 0 }}>
+                    <img src={ph.url} alt="ph" style={{ width: '100%', borderRadius: 10 }} />
+                    <figcaption style={{ fontSize: 12, color: '#64748b' }}>{new Date(ph.at).toLocaleString()}</figcaption>
                   </figure>
                 ))}
               </div>
+            )}
+          </div>
+        )}
 
-              {bonsai.photos.length>=2 && (
-                <Section title={STR[lang].compare_title}>
-                  <BeforeAfter before={bonsai.photos[bonsai.photos.length-1].src} after={bonsai.photos[0].src} lang={lang}/>
-                </Section>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {tab==='learn' && (
-        <div>
-          {!lib ? <div style={{color:'#94a3b8'}}>{lang==='es'?'Selecciona o escribe una especie para ver información.':'Choose or set a species to see info.'}</div> :
-            <>
-              <Section title="Wikipedia">
-                {wiki.loading ? <div>{STR[lang].learn_loading}</div> :
-                  <div>
-                    <div style={{fontWeight:700}}>{wiki.title}</div>
-                    <p style={{marginTop:6, lineHeight:1.5}}>{wiki.extract}</p>
-                    {wiki.url && <a href={wiki.url} target="_blank" rel="noreferrer">{STR[lang].learn_read}</a>}
-                  </div>}
-              </Section>
-
-              <Section title={STR[lang].inspire_title} right={<span style={{fontSize:12, color:'#64748b'}}>{STR[lang].inspire_note}</span>}>
-                {pics.length===0 ? <div style={{color:'#94a3b8'}}>—</div> :
-                  <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))', gap:8}}>
-                    {pics.map((u,i)=><img key={i} src={u} style={{width:'100%', borderRadius:10}}/>)}
-                  </div>}
-              </Section>
-            </>
-          }
-        </div>
-      )}
-
-      {tab==='tips' && (
-        <div>
-          <h3 style={{marginBottom:8}}>{STR[lang].tips_title}</h3>
-          <ul style={{lineHeight:1.6}}>
-            <li><b>{STR[lang].tip1_t}:</b> {STR[lang].tip1_d}</li>
-            <li><b>{STR[lang].tip2_t}:</b> {STR[lang].tip2_d}</li>
-            <li><b>{STR[lang].tip3_t}:</b> {STR[lang].tip3_d}</li>
-            <li><b>{STR[lang].tip4_t}:</b> {STR[lang].tip4_d}</li>
-            <li><b>{STR[lang].tip5_t}:</b> {STR[lang].tip5_d}</li>
-          </ul>
-        </div>
-      )}
-    </Modal>
-  )
-}
-
-/* ─────────────────────── Before/After ─────────────────────── */
-function BeforeAfter({before, after, lang}){
-  const [pos,setPos]=useState(50)
-  return (
-    <div style={{position:'relative', width:'100%', maxWidth:720, margin:'6px 0'}}>
-      <div style={{position:'relative', width:'100%', paddingTop:'56%', borderRadius:12, overflow:'hidden', background:'#e2e8f0'}}>
-        <img src={before} style={{position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover'}}/>
-        <img src={after} style={{position:'absolute', inset:0, width:`${pos}%`, height:'100%', objectFit:'cover', borderRight:'2px solid white'}}/>
-        <div style={{position:'absolute', left:8, top:8, padding:'4px 8px', background:'rgba(0,0,0,.55)', color:'#fff', borderRadius:6, fontSize:12}}>{STR[lang].before}</div>
-        <div style={{position:'absolute', right:8, top:8, padding:'4px 8px', background:'rgba(0,0,0,.55)', color:'#fff', borderRadius:6, fontSize:12}}>{STR[lang].after}</div>
+        {tab === 'style' && (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button onClick={() => setOpenStyle(true)}>Sugerir estilo</Button>
+              {item.style && <Chip color="#dcfce7">Actual: {item.style.nombre}</Chip>}
+            </div>
+            {item.style && (
+              <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <strong>{item.style.nombre}</strong>
+                  <Chip>Dificultad {item.style.dificultad}/5</Chip>
+                </div>
+                <div style={{ color: '#475569', marginTop: 6 }}>{item.style.descripcion}</div>
+                {item.style.reglas_clave?.length ? (
+                  <ul style={{ margin: '6px 0 0 18px', fontSize: 13 }}>
+                    {item.style.reglas_clave.map((r, i) => <li key={i}>{r}</li>)}
+                  </ul>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
       </div>
-      <input type="range" min="0" max="100" value={pos} onChange={e=>setPos(+e.target.value)} style={{width:'100%', marginTop:8}}/>
-      <div style={{fontSize:12, color:'#64748b'}}>{STR[lang].drag}</div>
+
+      <StyleWizard open={openStyle} onClose={() => setOpenStyle(false)} stylesDB={stylesDB} onPick={(st) => update({ style: st })} />
     </div>
-  )
+  );
 }
 
-/* ─────────────────────────── Modal ─────────────────────────── */
-function Modal({title, children, onClose, lang}){
-  useEffect(()=>{
-    const onEsc=(e)=>{ if(e.key==='Escape') onClose() }
-    document.addEventListener('keydown', onEsc); return ()=>document.removeEventListener('keydown', onEsc)
-  },[onClose])
+/* ============== App principal ============== */
+export default function App() {
+  const [bonsais, setBonsais] = useState(() => loadLS('zb_bonsais', []));
+  useEffect(() => saveLS('zb_bonsais', bonsais), [bonsais]);
+
+  const [settings, setSettings] = useState(() => loadLS('zb_settings', { useLunar: false }));
+  useEffect(() => saveLS('zb_settings', settings), [settings]);
+
+  const [openNew, setOpenNew] = useState(false);
+  const [openSettings, setOpenSettings] = useState(false);
+
+  // Datasets
+  const [speciesDB, setSpeciesDB] = useState(null);
+  const [stylesDB, setStylesDB] = useState(null);
+  const [tipsDB, setTipsDB] = useState(null);
+  const [toolsDB, setToolsDB] = useState(null);
+  const [propagationDB, setPropagationDB] = useState(null);
+
+  useEffect(() => { fetch('/species.json').then(r => r.json()).then(setSpeciesDB).catch(() => setSpeciesDB(null)); }, []);
+  useEffect(() => { fetch('/estilos.es.json').then(r => r.json()).then(setStylesDB).catch(() => setStylesDB(null)); }, []);
+  useEffect(() => { fetch('/tips_generales.es.json').then(r => r.json()).then(setTipsDB).catch(() => setTipsDB(null)); }, []);
+  useEffect(() => { fetch('/tools.es.json').then(r => r.json()).then(setToolsDB).catch(() => setToolsDB(null)); }, []);
+  useEffect(() => { fetch('/propagation.es.json').then(r => r.json()).then(setPropagationDB).catch(() => setPropagationDB(null)); }, []);
+
+  const speciesList = useMemo(() => (speciesDB?.species || []).map(s => s.scientific_name).filter(Boolean).sort((a, b) => a.localeCompare(b)), [speciesDB]);
+
+  const addBonsai = (item) => setBonsais([item, ...bonsais]);
+  const updateBonsai = (updated) => setBonsais(bonsais.map(b => (b.id === updated.id ? updated : b)));
+
   return (
-    <div style={{position:'fixed', inset:0, background:'rgba(15,23,42,.4)', padding:16, zIndex:50}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{maxWidth:920, margin:'40px auto', background:'#fff', borderRadius:14, padding:16}}>
-        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
-          <h2 style={{margin:'6px 0'}}>{title}</h2>
-          <button onClick={onClose} style={btn('slate')}>{STR[lang].close}</button>
+    <div style={{ minHeight: '100vh', background: '#f1f5f9' }}>
+      <header style={{ position: 'sticky', top: 0, zIndex: 20, backdropFilter: 'saturate(1.1) blur(6px)', background: 'rgba(241,245,249,0.75)', borderBottom: '1px solid #e5e7eb' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '12px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontWeight: 800, letterSpacing: 0.2 }}>🌿 ZenBonsai</div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {settings?.location ? (
+              <Chip>{settings.location.city}, {settings.location.country} · {settings.useLunar ? `Luna: on` : 'Luna: off'}</Chip>
+            ) : (
+              <Chip color="#fee2e2">Sin ubicación</Chip>
+            )}
+            <Button kind="ghost" onClick={() => setOpenSettings(true)}>Ubicación</Button>
+            <Button onClick={() => setOpenNew(true)}>+ Nuevo bonsái</Button>
+          </div>
         </div>
-        <div>{children}</div>
-      </div>
-      <style>{`
-        .lbl{display:block; font-size:12px; color:#64748b; margin-bottom:4px}
-        .in{width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:8px}
-      `}</style>
-    </div>
-  )
-}
+      </header>
 
-/* ──────────────────────── Estilos helper ─────────────────────── */
-function btn(color){
-  const base = { padding:'8px 12px', borderRadius:8, border:'1px solid transparent', cursor:'pointer' }
-  if(color==='emerald') return {...base, background:'#10b981', color:'#fff'}
-  if(color==='amber')  return {...base, background:'#f59e0b', color:'#111827'}
-  if(color==='slate')  return {...base, background:'#fff', color:'#334155', border:'1px solid #e5e7eb'}
-  return base
+      <main style={{ maxWidth: 1100, margin: '0 auto', padding: 12 }}>
+        <NextDaysPanel settings={settings} />
+
+        {bonsais.length === 0 ? (
+          <Section title="Tu colección">
+            <div style={{ color: '#64748b' }}>Aún no hay bonsáis. Pulsa “+ Nuevo bonsái” para registrar el primero. 👇</div>
+          </Section>
+        ) : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {bonsais.map(b => (
+              <BonsaiCard key={b.id} item={b} onUpdate={updateBonsai}
+                          speciesDB={speciesDB} stylesDB={stylesDB} tipsDB={tipsDB} />
+            ))}
+          </div>
+        )}
+
+        <ToolsList toolsDB={toolsDB} />
+        <PropagationList propagationDB={propagationDB} />
+      </main>
+
+      <NewBonsaiModal open={openNew} onClose={() => setOpenNew(false)} onSave={addBonsai} speciesList={speciesList} />
+      <SettingsModal open={openSettings} onClose={() => setOpenSettings(false)} settings={settings} setSettings={setSettings} />
+    </div>
+  );
 }
-const grid2 = { display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:12 }
