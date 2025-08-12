@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './zen.css';
+import { geocodeCity, reverseGeocode, loadAstronomy, moonPhaseLabel } from './geo-astro';
 
 /* ===================== Utilidades ===================== */
 const loadLS = (k, fb) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : fb; } catch { return fb; } };
