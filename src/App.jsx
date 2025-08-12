@@ -394,8 +394,16 @@ function NewBonsaiModal({lang, onClose, onSave}){
   const suggestions = useMemo(()=> SPECIES_LIST.filter(s=> s.toLowerCase().includes(notes.toLowerCase()) || s.toLowerCase().includes(name.toLowerCase())).slice(0,5), [notes,name])
 
   function handleFile(e){
-    const f = e.target.files?.[0]; if(!f) return
-    const r = new FileReader(); r.onload=()=>setPhoto(r.result); r.readAsDataURL(f)
+   async function handleFile(e){
+  const f = e.target.files?.[0]; if(!f) return;
+  try{
+    const small = await compressImage(f, 1280, 0.82);
+    setPhoto(small);
+  }catch(err){
+    console.warn('No se pudo comprimir la imagen', err);
+    alert('No se pudo procesar la imagen. Intenta con otra foto.');
+  }
+}
   }
   function save(){
     onSave({
