@@ -597,18 +597,44 @@ function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
       )}
 
       {tab==='checklist' && (
-        <div>
-          {(bonsai.tasks||[]).map(t=>
-            <div key={t.key} style={{display:'flex', alignItems:'center', justifyContent:'space-between', border:'1px solid #e5e7eb', borderRadius:10, padding:'10px 12px', margin:'8px 0'}>
-              <div>
-                <div style={{fontWeight:600}}>{lang==='es'?t.labelES:t.labelEN}</div>
-                <div style={{fontSize:12, color:'#64748b'}}>{STR[lang].every} {t.freq} {STR[lang].days} · <b>{nextDueLabel([t],lang)[t.key]}</b></div>
-              </div>
-              <button onClick={()=>mark(t.key)} style={btn('emerald')}>✓</button>
+      {tab==='checklist' && (
+  <div>
+    {(bonsai.tasks || []).map((t) => {
+      return (
+        <div
+          key={t.key}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            border: '1px solid #e5e7eb',
+            borderRadius: 10,
+            padding: '10px 12px',
+            margin: '8px 0'
+          }}
+        >
+          <div>
+            <div style={{ fontWeight: 600 }}>
+              {lang === 'es' ? t.labelES : t.labelEN}
             </div>
-          )}
+            <div style={{ fontSize: 12, color: '#64748b' }}>
+              {STR[lang].every} {t.freq} {STR[lang].days} ·{' '}
+              <b>{nextDueLabel([t], lang)[t.key]}</b>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => mark(t.key)}
+            style={btn('emerald')}
+          >
+            ✓
+          </button>
         </div>
-      )}
+      );
+    })}
+  </div>
+)}
+
 
       {tab==='photos' && (
         <div>
