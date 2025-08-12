@@ -1,14 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './zen.css';
 
-/* ==== Utils ==== */
+/* ========= Helpers de almacenamiento / texto ========= */
 const loadLS = (k, fb) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : fb; } catch { return fb; } };
 const saveLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\s+/g,' ').trim();
 function setCache(key, value, ttlH=24){ const exp = Date.now()+ttlH*3600*1000; saveLS(key,{exp,value}); }
 function getCache(key){ try{const raw=loadLS(key,null); if(!raw) return null; if(!raw.exp||Date.now()>raw.exp){localStorage.removeItem(key); return null;} return raw.value;}catch{return null;}}
 
-/* ==== Data helpers ==== */
+/* ========= Búsqueda de especie en species.json ========= */
 function findSpeciesEntry(db, input){
   if(!db?.species?.length||!input) return null;
   const n = norm(input);
@@ -31,7 +31,7 @@ function findSpeciesEntry(db, input){
   return hit||null;
 }
 
-/* ==== Open-Meteo (ubicación/astro) ==== */
+/* ========= Open-Meteo (geocoding + astronomía) ========= */
 async function geocodeCity(q, lang='es'){
   const url=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${lang}&format=json`;
   const r=await fetch(url); if(!r.ok) throw new Error('No se pudo geocodificar');
@@ -59,7 +59,7 @@ async function loadAstronomy(lat,lon,tz){
 const hemisphereFromLat = (lat)=> (lat>=0?'N':'S');
 function moonLabel(x){ if(x==null) return ''; if(x<0.03||x>0.97) return 'Luna nueva'; if(x<0.22) return 'Creciente (c.)'; if(x<0.28) return 'Cuarto creciente'; if(x<0.47) return 'Gibosa creciente'; if(x<0.53) return 'Luna llena'; if(x<0.72) return 'Gibosa menguante'; if(x<0.78) return 'Cuarto menguante'; return 'Menguante (c.)'; }
 
-/* ==== Ventanas genéricas ==== */
+/* ========= Ventanas por mes + regla lunar simple ========= */
 const WINDOWS = {
   repot: { N:[2,3],  S:[8,9] },
   structural_prune: { N:[1,2,11,12], S:[5,6,7,8] },
@@ -74,7 +74,7 @@ const lunarOk = (act, phase)=> {
   return true;
 };
 
-/* ==== Sensores: rangos por tipo (base editable) ==== */
+/* ========= Sensores (rangos base por tipo) ========= */
 const IDEALS = {
   conifera:     { lux:[25000,80000], rh:[40,60],  ec:[0.8,1.5] },
   caducifolio:  { lux:[15000,60000], rh:[50,70],  ec:[1.0,1.8] },
@@ -87,7 +87,7 @@ function inferType(entry){
   return 'caducifolio';
 }
 
-/* ==== Images (Wikipedia thumbnails) ==== */
+/* ========= Imágenes de referencia (Wikipedia thumbs) ========= */
 async function fetchSpeciesImages(scientific){
   if(!scientific) return [];
   const key=`imgs_${scientific}`;
@@ -102,7 +102,7 @@ async function fetchSpeciesImages(scientific){
   }catch{ return []; }
 }
 
-/* ==== UI atoms ==== */
+/* ========= UI Atoms ========= */
 const Chip = ({children,color}) => <span className="zb-chip" data-color={color||''}>{children}</span>;
 function Button({children,onClick,kind='primary',...rest}){ return <button className={`zb-btn zb-btn--${kind}`} onClick={onClick} {...rest}>{children}</button>; }
 function Icon({name}){ return <span className={`zb-ico zb-ico--${name}`} aria-hidden/>; }
@@ -127,7 +127,7 @@ function SearchBox({value,onChange,placeholder='Buscar...'}) {
   );
 }
 
-/* ==== Modales ==== */
+/* ========= Modal ========= */
 function Modal({open,onClose,title,children,footer}){
   if(!open) return null;
   return (
@@ -144,7 +144,7 @@ function Modal({open,onClose,title,children,footer}){
   );
 }
 
-/* ==== Style Wizard (galería) ==== */
+/* ========= Style Wizard (galería) ========= */
 function StyleWizard({open,onClose,stylesDB,onPick}){
   const [q,setQ]=useState({ recto:false, curvas:false, inclinacion:0, ramaCae:false, copaArriba:false, ramifina:false, viento:false });
   function score(e){ let s=0; if(q.recto && e.id==='chokkan') s+=3; if(q.curvas && e.id==='moyogi') s+=3; if(q.inclinacion>=25 && e.id==='shakkan') s+=3; if(q.ramaCae && (e.id==='kengai'||e.id==='han_kengai')) s+=3; if(q.copaArriba && e.id==='bunjin') s+=3; if(q.ramifina && e.id==='hokidachi') s+=3; if(q.viento && e.id==='fukinagashi') s+=3; return s; }
@@ -170,7 +170,6 @@ function StyleWizard({open,onClose,stylesDB,onPick}){
         <div className="zb-gallery">
           {ranked.map(e=>(
             <figure key={e.id} className="zb-card zb-figure hover-raise" onClick={()=>{ onPick?.(e); onClose(); }} title="Elegir estilo">
-              {/* Miniaturas orientativas desde Wikipedia */}
               <img className="zb-photo" alt={e.nombre}
                    src={`https://source.unsplash.com/400x300/?bonsai,${encodeURIComponent(e.nombre)}`}
                    onError={(ev)=> ev.currentTarget.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22400%22 height=%22300%22></svg>'}/>
@@ -187,7 +186,7 @@ function StyleWizard({open,onClose,stylesDB,onPick}){
   );
 }
 
-/* ==== Ajustes (ubicación + lunar) ==== */
+/* ========= Ajustes (ubicación + lunar) ========= */
 function SettingsModal({open,onClose,settings,setSettings}){
   const [q,setQ]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState('');
   async function bySearch(){ setBusy(true); setErr(''); try{ const geo=await geocodeCity(q,'es'); const astro=await loadAstronomy(geo.lat,geo.lon,geo.tz); setSettings({...settings, location:geo, astro, hemi:hemisphereFromLat(geo.lat)}); onClose?.(); }catch(e){setErr(e.message||'Error')}finally{setBusy(false);} }
@@ -208,7 +207,7 @@ function SettingsModal({open,onClose,settings,setSettings}){
   );
 }
 
-/* ==== Registro (con sensores) ==== */
+/* ========= Registro (con sensores) ========= */
 function NewBonsaiModal({open,onClose,onSave,speciesList}){
   const [name,setName]=useState(''); const [species,setSpecies]=useState(''); const [notes,setNotes]=useState('');
   const [file,setFile]=useState(null); const [busy,setBusy]=useState(false);
@@ -274,7 +273,7 @@ function NewBonsaiModal({open,onClose,onSave,speciesList}){
   );
 }
 
-/* ==== Panels ==== */
+/* ========= Panels ========= */
 function NextDaysPanel({settings}){
   if(!settings?.astro){
     return <Accordion icon="calendar" title="Próximos días sugeridos" defaultOpen={true} extra={<Chip color="danger">Configura ubicación</Chip>}>
@@ -299,6 +298,8 @@ function NextDaysPanel({settings}){
     </Accordion>
   );
 }
+
+const KV = ({k,v}) => <div className="zb-card"><div className="zb-subtle">{k}</div><div className="zb-strong">{v}</div></div>;
 
 function CareAndRefs({db,speciesName,tipsDB}){
   const [q,setQ]=useState('');
@@ -330,7 +331,6 @@ function CareAndRefs({db,speciesName,tipsDB}){
     </>
   );
 }
-const KV = ({k,v}) => <div className="zb-card"><div className="zb-subtle">{k}</div><div className="zb-strong">{v}</div></div>;
 
 function PhotoStrip({species}){
   const [imgs,setImgs]=useState([]);
@@ -346,7 +346,7 @@ function PhotoStrip({species}){
   );
 }
 
-/* ==== Bonsai Card (acordeones + toggle checklist) ==== */
+/* ========= Tarjeta de bonsái ========= */
 function BonsaiCard({item,onUpdate,speciesDB,stylesDB,tipsDB}){
   const fileRef=useRef();
   const speciesEntry=useMemo(()=>findSpeciesEntry(speciesDB,item.species),[speciesDB,item.species]);
@@ -459,7 +459,7 @@ function BonsaiCard({item,onUpdate,speciesDB,stylesDB,tipsDB}){
   );
 }
 
-/* ==== App ==== */
+/* ========= APP ========= */
 export default function App(){
   const [bonsais,setBonsais]=useState(()=>loadLS('zb_bonsais',[])); useEffect(()=>saveLS('zb_bonsais',bonsais),[bonsais]);
   const [settings,setSettings]=useState(()=>loadLS('zb_settings',{useLunar:false})); useEffect(()=>saveLS('zb_settings',settings),[settings]);
@@ -469,11 +469,31 @@ export default function App(){
   const [speciesDB,setSpeciesDB]=useState(null); const [stylesDB,setStylesDB]=useState(null);
   const [tipsDB,setTipsDB]=useState(null); const [toolsDB,setToolsDB]=useState(null); const [propagationDB,setPropagationDB]=useState(null);
 
+  // Carga de datasets
   useEffect(()=>{ fetch('/species.json').then(r=>r.json()).then(setSpeciesDB).catch(()=>setSpeciesDB(null)); },[]);
   useEffect(()=>{ fetch('/estilos.es.json').then(r=>r.json()).then(setStylesDB).catch(()=>setStylesDB(null)); },[]);
   useEffect(()=>{ fetch('/tips_generales.es.json').then(r=>r.json()).then(setTipsDB).catch(()=>setTipsDB(null)); },[]);
   useEffect(()=>{ fetch('/tools.es.json').then(r=>r.json()).then(setToolsDB).catch(()=>setToolsDB(null)); },[]);
   useEffect(()=>{ fetch('/propagation.es.json').then(r=>r.json()).then(setPropagationDB).catch(()=>setPropagationDB(null)); },[]);
+
+  // 🔧 Auto-cargar astronomía cuando ya hay ubicación
+  useEffect(() => {
+    (async () => {
+      try {
+        if (settings?.location && !settings?.astro) {
+          const { lat, lon, tz } = settings.location;
+          const astro = await loadAstronomy(lat, lon, tz);
+          setSettings(s => ({
+            ...s,
+            astro,
+            hemi: s.hemi || hemisphereFromLat(lat),
+          }));
+        }
+      } catch (e) {
+        console.error('No se pudo cargar astro:', e);
+      }
+    })();
+  }, [settings.location]);
 
   const speciesList = useMemo(()=> (speciesDB?.species||[]).map(s=>s.scientific_name).filter(Boolean).sort((a,b)=>a.localeCompare(b)),[speciesDB]);
 
@@ -481,23 +501,6 @@ export default function App(){
   const updateBonsai = (u)=> setBonsais(bonsais.map(b=>b.id===u.id?u:b));
 
   return (
-    useEffect(() => {
-  (async () => {
-    try {
-      if (settings?.location && !settings?.astro) {
-        const { lat, lon, tz } = settings.location;
-        const astro = await loadAstronomy(lat, lon, tz);
-        setSettings(s => ({
-          ...s,
-          astro,
-          hemi: s.hemi || hemisphereFromLat(lat)
-        }));
-      }
-    } catch (e) {
-      console.error('No se pudo cargar astro:', e);
-    }
-  })();
-}, [settings.location]);
     <div className="zb-app">
       <header className="zb-header">
         <div className="zb-header__inner">
@@ -518,7 +521,6 @@ export default function App(){
             <div className="zb-stack">{bonsais.map(b=> <BonsaiCard key={b.id} item={b} onUpdate={updateBonsai} speciesDB={speciesDB} stylesDB={stylesDB} tipsDB={tipsDB}/> )}</div>}
         </Accordion>
 
-        {/* Extras informativos (siguen disponibles) */}
         {toolsDB?.length>0 && (
           <Accordion icon="tools" title="Herramientas y usos" defaultOpen={false}>
             <div className="zb-stack">{toolsDB.map(t=>(
