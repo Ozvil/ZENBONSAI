@@ -597,8 +597,7 @@ function BonsaiModal({lang, bonsai, onClose, onUpdate, onHistory, onAch}){
       )}
 
       {tab==='checklist' && (
-      {tab==='checklist' && (
-  <div>
+       <div>
     {(bonsai.tasks || []).map((t) => {
       return (
         <div
