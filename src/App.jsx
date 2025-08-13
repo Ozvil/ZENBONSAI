@@ -1,641 +1,513 @@
-// src/App.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import './zen.css';
 
-/* ========================= Utilidades base ========================= */
-const LSK_BONSAIS = 'zb_bonsais';
-const LSK_SETTINGS = 'zb_settings';
-const ONE_DAY = 24 * 3600e3;
+/* ========= Helpers locales (sin lib) ========= */
+const LS_BONSAIS = 'zb_bonsais';
+const LS_SETTINGS = 'zb_settings';
+const LS_LANG = 'zb_lang';
 
-const loadLS = (k, fb) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : fb; } catch { return fb; } };
-const saveLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
-const setCache = (key, value, ttl = ONE_DAY) => { try { localStorage.setItem(key, JSON.stringify({ exp: Date.now() + ttl, value })) } catch {} };
-const getCache = (key) => { try {
-  const raw = localStorage.getItem(key); if (!raw) return null;
-  const { exp, value } = JSON.parse(raw); if (Date.now() > exp) return null;
-  return value;
-} catch { return null } };
-
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
-const todayISO = () => new Date().toISOString();
-const norm = (s='') => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+const norm = (s='') => s.normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/\s+/g,' ').trim().toLowerCase();
+const load = (k, fb) => { try { const raw = localStorage.getItem(k); return raw ? JSON.parse(raw) : fb; } catch { return fb; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-/* ===================== Open-Meteo: Geo + Astronomía ===================== */
-// Geocodificación por texto
-async function geocodeCity(q, lang = 'es') {
-  const key = `geo_${lang}_${norm(q)}`;
-  const c = getCache(key); if (c) return c;
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${lang}&format=json`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Open-Meteo ${r.status}`);
-  const j = await r.json();
-  if (!j.results?.length) throw new Error('No encontrado');
-  const { latitude, longitude, timezone, country, name, admin1 } = j.results[0];
-  const out = { lat: latitude, lon: longitude, tz: timezone, country, city: name, region: admin1 || '' };
-  setCache(key, out);
-  return out;
+function fmtDate(d, lang='es-PE'){
+  try {
+    return new Date(d).toLocaleString(lang, { day:'2-digit', month:'short' });
+  } catch { return d; }
 }
-// Reverse geocoding (añade format=json para evitar 400)
-async function reverseGeocode(lat, lon, lang = 'es') {
-  const key = `rev_${lang}_${Number(lat).toFixed(4)}_${Number(lon).toFixed(4)}`;
-  const c = getCache(key); if (c) return c;
-  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=${lang}&format=json`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Open-Meteo ${r.status}`);
-  const j = await r.json();
-  const o = j.results?.[0] || {};
-  const out = {
-    tz: o.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-    country: o.country || '',
-    city: o.name || o.admin1 || '',
-    region: o.admin1 || ''
-  };
-  setCache(key, out);
-  return out;
-}
-// Astronomía (con fallback timezone=auto)
-async function loadAstronomy(lat, lon, tz) {
-  if (lat == null || lon == null) throw new Error('Lat/Lon faltan');
-  const la = Number(lat).toFixed(4), lo = Number(lon).toFixed(4);
-  const key = `astro_${la}_${lo}_${tz || 'auto'}`;
-  const c = getCache(key); if (c) return c;
-  const base = `https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&daily=sunrise,sunset,moon_phase,moonrise,moonset`;
-  const urls = [
-    tz ? `${base}&timezone=${encodeURIComponent(tz)}` : `${base}&timezone=auto`,
-    `${base}&timezone=auto`,
-  ];
-  let lastErr;
-  for (const u of urls) {
-    try {
-      const r = await fetch(u);
-      if (!r.ok) throw new Error(`Open-Meteo ${r.status}`);
-      const j = await r.json();
-      if (!j?.daily?.time) throw new Error('Respuesta inválida');
-      setCache(key, j.daily);
-      return j.daily;
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr || new Error('Fallo astronomía');
-}
-const moonPhaseLabel = (code) => {
-  if (code == null) return '';
-  const p = Number(code);
-  if (p < 0.03 || p > 0.97) return 'Luna nueva';
-  if (p < 0.22) return 'Creciente';
-  if (p < 0.28) return 'Cuarto creciente';
-  if (p < 0.47) return 'Gibosa creciente';
-  if (p < 0.53) return 'Luna llena';
-  if (p < 0.72) return 'Gibosa menguante';
-  if (p < 0.78) return 'Cuarto menguante';
+
+function moonLabel(code) {
+  // Open-Meteo: 0=new, 0.25=first quarter, 0.5=full, 0.75=last quarter
+  const v = Number(code);
+  if (isNaN(v)) return '—';
+  if (v < 0.03 || v > 0.97) return 'Luna nueva';
+  if (v >= 0.47 && v <= 0.53) return 'Luna llena';
+  if (v >= 0.22 && v <= 0.28) return 'Cuarto creciente';
+  if (v >= 0.72 && v <= 0.78) return 'Cuarto menguante';
+  if (v < 0.5) return 'Creciente';
   return 'Menguante';
-};
-
-/* ========================= Datos (fetch opcional) ========================= */
-async function safeJSON(path) {
-  try { const r = await fetch(path); if (!r.ok) throw new Error(); return await r.json(); }
-  catch { return null; }
 }
 
-/* ========================= Componentes UI reutilizables ========================= */
-const Badge = ({children}) => <span className="zb-badge">{children}</span>;
-const Pill = ({children, onClick, tone='default'}) =>
-  <button className={`zb-pill zb-pill-${tone}`} onClick={onClick}>{children}</button>;
-const Btn = ({children, onClick, tone='default', small=false}) =>
-  <button className={`zb-btn zb-btn-${tone}${small?' zb-btn-sm':''}`} onClick={onClick}>{children}</button>;
-const Collapse = ({title, right, open, onToggle, children}) => (
-  <section className="zb-card">
-    <header className="zb-card-h" onClick={onToggle}>
-      <div>{title}</div>
-      <div className="zb-card-h-right">{right} <span className="zb-caret">{open?'▾':'▸'}</span></div>
-    </header>
-    {open && <div className="zb-card-b">{children}</div>}
-  </section>
-);
-
-/* ========================= App principal ========================= */
-export default function App() {
-  /* ---------- settings ---------- */
-  const [settings, setSettings] = useState(() => loadLS(LSK_SETTINGS, { lang: 'es', lunar: false, location: null }));
-  useEffect(() => saveLS(LSK_SETTINGS, settings), [settings]);
-
-  /* ---------- catálogos (opcionales) ---------- */
-  const [speciesDB, setSpeciesDB] = useState(null);
-  const [stylesDB, setStylesDB]   = useState(null);
-  const [tipsDB, setTipsDB]       = useState(null);
-  const [toolsDB, setToolsDB]     = useState(null);
-  const [propDB, setPropDB]       = useState(null);
-
-  useEffect(() => { (async () => {
-    setSpeciesDB(await safeJSON('/species.json'));
-    setStylesDB(await safeJSON('/styles.json'));
-    setTipsDB(await safeJSON('/tips.json'));
-    setToolsDB(await safeJSON('/tools.json'));
-    setPropDB(await safeJSON('/propagation.json'));
-  })()}, []);
-
-  /* ---------- astronomía / sugerencias ---------- */
-  const [astro, setAstro] = useState(null);
-  useEffect(() => {
-    (async () => {
-      try {
-        const loc = settings.location;
-        if (!loc?.lat || !loc?.lon) { setAstro(null); return; }
-        const d = await loadAstronomy(loc.lat, loc.lon, loc.tz);
-        setAstro(d);
-      } catch (e) {
-        console.error('Astronomy error', e);
-        setAstro(null);
-      }
-    })();
-  }, [settings?.location?.lat, settings?.location?.lon, settings?.location?.tz, settings?.lunar]);
-
-  const suggestions = useMemo(() => {
-    if (!astro?.time?.length) return [];
-    const out = [];
-    // Ejemplo simple: próximos 7 días
-    for (let i=0;i<Math.min(7, astro.time.length);i++){
-      const day = astro.time[i];
-      const sunrise = astro.sunrise?.[i];
-      const sunset  = astro.sunset?.[i];
-      const moon    = astro.moon_phase?.[i];
-      const label   = settings.lunar ? `Fase: ${moonPhaseLabel(moon)}` : `${new Date(sunrise).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})} – ${new Date(sunset).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`;
-      // Heurística simple: poda fina en luna menguante, alambrado en creciente, trasplante cerca de luna nueva
-      let task = 'Revisión general';
-      if (settings.lunar) {
-        if (moon != null) {
-          if (moon > 0.48 && moon < 0.78) task = 'Poda / reducción (menguante)';
-          else if (moon > 0.20 && moon < 0.48) task = 'Alambrado y brotación (creciente)';
-          else if (moon < 0.06 || moon > 0.94) task = 'Trasplante / raíces (cerca de luna nueva)';
-        }
-      } else {
-        task = 'Riego/chequeo al amanecer';
-      }
-      out.push({ day, label, task });
-    }
-    return out;
-  }, [astro, settings.lunar]);
-
-  /* ---------- colección ---------- */
-  const [bonsais, setBonsais] = useState(() => loadLS(LSK_BONSAIS, []));
-  useEffect(() => saveLS(LSK_BONSAIS, bonsais), [bonsais]);
-
-  const addBonsai = (b) => setBonsais(prev => [{ id: uid(), createdAt: todayISO(), photos: [], tasks: defaultTasks(), logs:{}, ...b }, ...prev]);
-  const updateBonsai = (id, patch) => setBonsais(prev => prev.map(b => b.id===id ? { ...b, ...patch } : b));
-  const removeBonsai = (id) => setBonsais(prev => prev.filter(b => b.id!==id));
-
-  function defaultTasks(){
-    return [
-      { key:'water', name:'Riego', freq:2, unit:'d', next:Date.now() },
-      { key:'fert',  name:'Abono', freq:21, unit:'d', next:Date.now() },
-      { key:'prune', name:'Poda/Pinzado', freq:30, unit:'d', next:Date.now() },
-    ];
+function pickSensorIdeals(speciesName='') {
+  // Valores demostrativos. Si tienes tabla real, cámbiala aquí:
+  const g = norm(speciesName);
+  if (g.includes('juniper') || g.includes('junipero')) {
+    return { lux: '20k–60k', humidity: '35–55%', ec: '0.8–1.4 mS/cm' };
   }
-
-  /* ---------- Undo (deshacer) ---------- */
-  const [undo, setUndo] = useState(null); // {type, bonsaiId, payload, at}
-  function markTask(b, key){
-    const t = (b.tasks||[]).find(x=>x.key===key); if(!t) return;
-    const logKey = `log_${key}`;
-    const entry = { at: todayISO() };
-    const nextDue = Date.now() + (t.freq||1) * 86400e3;
-    const newLogs = { ...(b.logs||{}), [logKey]: [ ...(b.logs?.[logKey]||[]), entry ] };
-    const newTasks = (b.tasks||[]).map(x=> x.key===key ? { ...x, next: nextDue } : x);
-    updateBonsai(b.id, { logs:newLogs, tasks:newTasks });
-    setUndo({ type:'task', bonsaiId:b.id, payload:{ key, entry }, at: Date.now() });
+  if (g.includes('ficus')) {
+    return { lux: '10k–30k', humidity: '45–65%', ec: '1.2–2.0 mS/cm' };
   }
-  function undoLast(){
-    if(!undo) return;
-    if(undo.type==='task'){
-      const b = bonsais.find(x=>x.id===undo.bonsaiId); if(!b) return setUndo(null);
-      const key = `log_${undo.payload.key}`;
-      const logs = (b.logs?.[key]||[]).filter(x=>x.at!==undo.payload.entry.at);
-      // no movemos el next; solo devolvemos un día al pasado para que vuelva a aparecer como “pendiente”
-      const tasks = (b.tasks||[]).map(t => t.key===undo.payload.key ? { ...t, next: Date.now() - 1 } : t);
-      updateBonsai(b.id, { logs:{ ...(b.logs||{}), [key]: logs }, tasks });
-    }
-    setUndo(null);
+  return { lux: '8k–25k', humidity: '40–60%', ec: '0.8–1.2 mS/cm' };
+}
+
+/* ========= Fetch Geo/Luna ========= */
+
+async function geocodeByName(query, lang='es') {
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=${lang}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Geocoding ${r.status}`);
+  const j = await r.json();
+  const item = j?.results?.[0];
+  if (!item) throw new Error('No encontrado');
+  return {
+    name: [item.name, item.admin1, item.country].filter(Boolean).join(', '),
+    lat: Number(item.latitude),
+    lon: Number(item.longitude),
+  };
+}
+
+async function reverseByCoords(lat, lon, lang='es') {
+  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=${lang}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Reverse ${r.status}`);
+  const j = await r.json();
+  const item = j?.results?.[0];
+  return {
+    name: item ? [item.name, item.admin1, item.country].filter(Boolean).join(', ') : `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+    lat: Number(lat),
+    lon: Number(lon),
+  };
+}
+
+function dateStr(d){ return d.toISOString().slice(0,10); }
+
+async function fetchMoon(lat, lon, days=10) {
+  if (isNaN(lat) || isNaN(lon)) throw new Error('coords inválidas');
+  const start = new Date();
+  const end = new Date(Date.now() + (days*86400000));
+  const url = `https://api.open-meteo.com/v1/astronomy?latitude=${lat}&longitude=${lon}&daily=moon_phase&timezone=auto&start_date=${dateStr(start)}&end_date=${dateStr(end)}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Astronomy ${r.status}`);
+  const j = await r.json();
+  const out = [];
+  const dates = j?.daily?.time ?? [];
+  const phases = j?.daily?.moon_phase ?? [];
+  for (let i=0;i<dates.length;i++){
+    out.push({ date: dates[i], phase: phases[i] });
   }
+  return out;
+}
 
-  /* ---------- UI: modales y búsquedas ---------- */
-  const [openLoc, setOpenLoc] = useState(false);
-  const [openNew, setOpenNew] = useState(false);
-  const [queryCol, setQueryCol] = useState('');
-  const [qTools, setQTools] = useState('');
-  const [qProp, setQProp] = useState('');
-  const [qStyles, setQStyles] = useState('');
+/* ========= Componentes UI simples ========= */
 
-  const [openSug, setOpenSug] = useState(true);
-  const [openCol, setOpenCol] = useState(true);
-  const [openTools, setOpenTools] = useState(false);
-  const [openProp, setOpenProp] = useState(false);
-
-  /* ---------- helpers especie / sensores ---------- */
-  function findSpeciesEntry(db, input){
-    if(!db?.species?.length || !input) return null;
-    const n = norm(input);
-    let hit = db.species.find(sp => norm(sp.scientific_name)===n || norm(sp.name_es||'')===n || sp.common_names?.es?.map(norm).includes(n));
-    if(hit) return hit;
-    hit = db.species.find(sp => norm(sp.scientific_name)?.startsWith(n));
-    if(hit) return hit;
-    const genus = (input.split(' ')[0] || '').trim();
-    if(!genus) return null;
-    const candidates = db.species.filter(sp => norm(sp.scientific_name).startsWith(genus+' '));
-    return candidates[0] || null;
-  }
-  function idealRangesForSpecies(sp){
-    // Si tu species.json trae rangos, úsalos; si no, defaults
-    const def = { fertility:'300–700 ppm', lux:'5,000–15,000 lx', humidity:'40–60 %' };
-    if(!sp?.sensors) return def;
-    const f = sp.sensors.fertility ? `${sp.sensors.fertility.min}–${sp.sensors.fertility.max} ${sp.sensors.fertility.unit||'ppm'}` : def.fertility;
-    const l = sp.sensors.lux ? `${sp.sensors.lux.min}–${sp.sensors.lux.max} lx` : def.lux;
-    const h = sp.sensors.humidity ? `${sp.sensors.humidity.min}–${sp.sensors.humidity.max} %` : def.humidity;
-    return { fertility:f, lux:l, humidity:h };
-  }
-
-  /* ================================ Render ================================ */
+function Chip({ children, onClick, tone='neutral', active }) {
   return (
-    <div className="zb-app">
-      <header className="zb-header">
-        <div className="zb-header_inner">
-          <div className="zb-brand">
-            <span className="zb-logo">🌿</span> <b>ZenBonsai</b>
-          </div>
-          <div className="zb-actions">
-            <Pill tone={settings?.location ? 'ok' : 'warn'} onClick={()=>setOpenLoc(true)}>
-              {settings?.location
-                ? `${settings.location?.label || 'Ubicación'} · Luna: ${settings.lunar?'on':'off'}`
-                : 'Sin ubicación'}
-            </Pill>
-            <Pill onClick={()=>setOpenLoc(true)}>📍 Ubicación</Pill>
-            <Btn tone="primary" onClick={()=>setOpenNew(true)}>+ Nuevo</Btn>
-          </div>
-        </div>
-      </header>
-
-      {/* Sugerencias / calendario */}
-      <Collapse
-        title={<><Badge>📅</Badge> Próximos días sugeridos</>}
-        right={<Btn small tone="soft" onClick={(e)=>{e.stopPropagation(); setOpenLoc(true)}}>Configura ubicación</Btn>}
-        open={openSug}
-        onToggle={()=>setOpenSug(o=>!o)}
-      >
-        {!settings?.location
-          ? <p>Abre “Ubicación” y activa (si quieres) calendario lunar.</p>
-          : suggestions.length===0
-            ? <p>No hay datos de astronomía aún. Intenta recargar o revisa tu conexión.</p>
-            : (
-              <div className="zb-list">
-                {suggestions.map(s=>(
-                  <div className="zb-item" key={s.day}>
-                    <div className="zb-item_t">{new Date(s.day).toLocaleDateString()}</div>
-                    <div className="zb-item_s">{s.task}</div>
-                    <div className="zb-item_r">{s.label}</div>
-                  </div>
-                ))}
-              </div>
-            )
-        }
-      </Collapse>
-
-      {/* Colección */}
-      <Collapse
-        title={<><Badge>🪴</Badge> Tu colección</>}
-        right={<span>{bonsais.length}</span>}
-        open={openCol}
-        onToggle={()=>setOpenCol(o=>!o)}
-      >
-        <div className="zb-row">
-          <input className="zb-input" placeholder="Buscar por nombre o especie…" value={queryCol} onChange={e=>setQueryCol(e.target.value)} />
-          <Btn tone="primary" onClick={()=>setOpenNew(true)}>+ Nuevo</Btn>
-        </div>
-
-        {bonsais.length===0 && <p>Pulsa “Nuevo” para registrar el primero.</p>}
-
-        <div className="zb-grid">
-          {bonsais
-            .filter(b => {
-              const q = norm(queryCol);
-              if(!q) return true;
-              return norm(b.name).includes(q) || norm(b.species||'').includes(q) || norm(b.notes||'').includes(q);
-            })
-            .map(b => <BonsaiCard
-              key={b.id}
-              b={b}
-              onUpdate={patch=>updateBonsai(b.id, patch)}
-              onDelete={()=>removeBonsai(b.id)}
-              onMark={key=>markTask(b, key)}
-            />)}
-        </div>
-      </Collapse>
-
-      {/* Herramientas y usos */}
-      <Collapse
-        title={<><Badge>🛠️</Badge> Herramientas y usos</>}
-        right={<span/>}
-        open={openTools}
-        onToggle={()=>setOpenTools(o=>!o)}
-      >
-        {!toolsDB
-          ? <p>Sin datos (aún). Si subes <code>/tools.json</code>, aparecerán aquí.</p>
-          : <>
-              <input className="zb-input" placeholder="Buscar herramienta…" value={qTools} onChange={e=>setQTools(e.target.value)} />
-              <div className="zb-list">
-                {toolsDB.items
-                  .filter(t => norm(t.name).includes(norm(qTools)))
-                  .map(t=>(
-                    <div className="zb-item" key={t.id || t.name}>
-                      <div className="zb-item_t">{t.name}</div>
-                      <div className="zb-item_s">{t.use}</div>
-                    </div>
-                  ))}
-              </div>
-            </>
-        }
-      </Collapse>
-
-      {/* Propagación */}
-      <Collapse
-        title={<><Badge>🌱</Badge> Propagación</>}
-        right={<span/>}
-        open={openProp}
-        onToggle={()=>setOpenProp(o=>!o)}
-      >
-        {!propDB
-          ? <p>Sin datos (aún). Si subes <code>/propagation.json</code>, aparecerán aquí.</p>
-          : <>
-              <input className="zb-input" placeholder="Buscar técnica…" value={qProp} onChange={e=>setQProp(e.target.value)} />
-              <div className="zb-list">
-                {propDB.items
-                  .filter(t => norm(t.name).includes(norm(qProp)))
-                  .map(t=>(
-                  <div className="zb-item" key={t.id || t.name}>
-                    <div className="zb-item_t">{t.name}</div>
-                    <div className="zb-item_s">{t.method}</div>
-                    <div className="zb-item_r">{t.season}</div>
-                  </div>))}
-              </div>
-            </>
-        }
-      </Collapse>
-
-      {/* Snackbar Undo */}
-      {undo && (
-        <div className="zb-snackbar">
-          Acción registrada. <Btn small tone="link" onClick={undoLast}>Deshacer</Btn>
-        </div>
-      )}
-
-      {/* Modal Ubicación */}
-      {openLoc && (
-        <LocationModal
-          settings={settings}
-          onClose={()=>setOpenLoc(false)}
-          onSave={(patch)=>setSettings(s=>({ ...s, ...patch }))}
-        />
-      )}
-
-      {/* Modal Nuevo */}
-      {openNew && (
-        <NewBonsaiModal
-          speciesDB={speciesDB}
-          onClose={()=>setOpenNew(false)}
-          onCreate={(b)=>{ addBonsai(b); setOpenNew(false); }}
-        />
-      )}
-    </div>
+    <button className={`zb-chip zb-chip--${tone} ${active ? 'is-active':''}`} onClick={onClick}>{children}</button>
   );
 }
 
-/* ========================= Subcomponentes ========================= */
-
-function BonsaiCard({ b, onUpdate, onDelete, onMark }){
-  const [open, setOpen] = useState(false);
-  const fileRef = useRef(null);
-
-  const nextDueLabel = (t) => {
-    const ms = (t.next||Date.now()) - Date.now();
-    if (ms <= 0) return 'ahora';
-    const d = Math.ceil(ms/86400e3);
-    if (d<=1) return 'mañana';
-    return `en ${d} días`;
-  };
-
-  const addPhoto = (file) => {
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const ph = { id: uid(), at: todayISO(), data: reader.result };
-      onUpdate({ photos:[ ph, ...(b.photos||[]) ] });
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const useSensor = b.sensor?.use;
-  const ranges = b.sensor?.ranges;
-
+function SectionCard({ title, icon, count, children, right, collapsible=true }) {
+  const [open, setOpen] = useState(true);
   return (
-    <div className="zb-card zb-bonsai">
-      <header className="zb-card-h" onClick={()=>setOpen(o=>!o)}>
-        <div>
-          <div className="zb-title">{b.name} <span className="zb-muted">· {b.species || 'Sin especie'}</span></div>
-          <div className="zb-sub">{b.location || 'Ubicación no indicada'}</div>
-        </div>
-        <div className="zb-card-h-right">
-          <Btn small tone="danger" onClick={(e)=>{ e.stopPropagation(); if(confirm('¿Eliminar?')) onDelete(); }}>Eliminar</Btn>
-          <span className="zb-caret">{open?'▾':'▸'}</span>
-        </div>
-      </header>
-
-      {open && (
-        <div className="zb-card-b">
-          {/* Fotos */}
-          <div className="zb-file">
-            <span>Fotos:</span>
-            <input type="file" accept="image/*" ref={fileRef} onChange={(e)=>addPhoto(e.target.files?.[0])} />
-          </div>
-          {(b.photos?.length>0)
-            ? <div className="zb-gallery">{b.photos.map(ph=>(
-                <figure key={ph.id} className="zb-figure">
-                  <img src={ph.data} alt="" />
-                  <figcaption className="zb-sub">{new Date(ph.at).toLocaleString()}</figcaption>
-                </figure>
-              ))}</div>
-            : <p className="zb-muted">Aún no hay fotos.</p>
-          }
-
-          {/* Checklist */}
-          <h4 className="zb-sep">Checklist</h4>
-          <div className="zb-list">
-            {(b.tasks||[]).map(t=>(
-              <div className="zb-item" key={t.key}>
-                <div className="zb-item_t">{t.name}</div>
-                <div className="zb-item_s">Cada {t.freq} días · Próximo: <b>{nextDueLabel(t)}</b></div>
-                <div className="zb-item_r">
-                  <Btn small tone="ok" onClick={()=>onMark(t.key)}>✓ Hecho</Btn>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Sensor */}
-          <h4 className="zb-sep">Sensor</h4>
-          {useSensor
-            ? <div className="zb-list">
-                <div className="zb-item"><div className="zb-item_t">Fertilidad</div><div className="zb-item_s">{ranges?.fertility || '—'}</div></div>
-                <div className="zb-item"><div className="zb-item_t">Luz</div><div className="zb-item_s">{ranges?.lux || '—'}</div></div>
-                <div className="zb-item"><div className="zb-item_t">Humedad</div><div className="zb-item_s">{ranges?.humidity || '—'}</div></div>
-                <div className="zb-item"><div className="zb-item_t">Nota</div><div className="zb-item_s">Ajusta umbrales según estación y respuesta del árbol.</div></div>
-              </div>
-            : <p className="zb-muted">No usa sensor.</p>
-          }
-
-          {/* Notas */}
-          <h4 className="zb-sep">Notas</h4>
-          <textarea className="zb-textarea" placeholder="Escribe notas…" value={b.notes||''} onChange={e=>onUpdate({ notes:e.target.value })} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LocationModal({ settings, onClose, onSave }){
-  const [q, setQ] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState('');
-
-  async function doSearch(){
-    try {
-      setBusy(true); setMsg('');
-      const g = await geocodeCity(q || '', settings.lang || 'es');
-      onSave({ location: { lat:g.lat, lon:g.lon, tz:g.tz, label:`${g.city}${g.city?', ':''}${g.country}` } });
-    } catch (e) {
-      setMsg(e.message || 'No se pudo geocodificar');
-    } finally { setBusy(false); }
-  }
-  async function useMyLocation(){
-    setMsg('');
-    if(!navigator.geolocation){ setMsg('Geolocalización no disponible'); return; }
-    setBusy(true);
-    navigator.geolocation.getCurrentPosition(async pos=>{
-      try{
-        const { latitude, longitude } = pos.coords;
-        const rev = await reverseGeocode(latitude, longitude, settings.lang || 'es');
-        onSave({ location: { lat:latitude, lon:longitude, tz:rev.tz, label:`${rev.city||''}${rev.city?', ':''}${rev.country||''}` } });
-      }catch(e){ setMsg(e.message || 'Error ubicando'); }
-      finally{ setBusy(false); }
-    }, err=>{ setBusy(false); setMsg(err.message || 'No se pudo obtener tu ubicación'); }, { enableHighAccuracy:true, timeout:10000 });
-  }
-
-  return (
-    <div className="zb-modal">
-      <div className="zb-modal_dialog">
-        <div className="zb-modal_h">
-          <div>Ubicación y calendario</div>
-          <button className="zb-x" onClick={onClose}>✕</button>
-        </div>
-        <div className="zb-modal_b">
-          <div className="zb-row">
-            <input className="zb-input" placeholder="Ciudad, país (p.ej. Lima, Perú)" value={q} onChange={e=>setQ(e.target.value)} />
-            <Btn tone="primary" onClick={doSearch} disabled={busy}>Buscar</Btn>
-          </div>
-          <Btn tone="soft" onClick={useMyLocation} disabled={busy}>Usar mi ubicación</Btn>
-          <div className="zb-row">
-            <label><input type="checkbox" checked={!!settings.lunar} onChange={e=>onSave({ lunar: e.target.checked })} /> Calendario lunar</label>
-          </div>
-          {msg && <div className="zb-error">Open-Meteo: {msg}</div>}
-          {settings.location && (
-            <div className="zb-note">Actual: <b>{settings.location.label}</b> · TZ: {settings.location.tz}</div>
+    <div className="zb-card">
+      <div className="zb-card_head">
+        <div className="zb-title"><span className="zb-ico">{icon}</span>{title}</div>
+        <div className="zb-card_actions">
+          {typeof count==='number' && <span className="zb-count">{count}</span>}
+          {right}
+          {collapsible && (
+            <button className="zb-toggle" onClick={()=>setOpen(v=>!v)} aria-label="toggle">▾</button>
           )}
         </div>
-        <div className="zb-modal_f">
-          <Btn tone="soft" onClick={onClose}>Cerrar</Btn>
+      </div>
+      {(!collapsible || open) && <div className="zb-card_body">{children}</div>}
+    </div>
+  );
+}
+
+function Modal({ open, onClose, title, children, footer }) {
+  if (!open) return null;
+  return (
+    <div className="zb-modal_back" onClick={onClose}>
+      <div className="zb-modal" onClick={e=>e.stopPropagation()}>
+        <div className="zb-modal_head">
+          <div className="zb-title">{title}</div>
+          <button className="zb-close" onClick={onClose}>✕</button>
         </div>
+        <div className="zb-modal_body">{children}</div>
+        {footer && <div className="zb-modal_foot">{footer}</div>}
       </div>
     </div>
   );
 }
 
-function NewBonsaiModal({ onClose, onCreate, speciesDB }){
-  const [name, setName] = useState('');
-  const [species, setSpecies] = useState('');
-  const [loc, setLoc] = useState('');
-  const [notes, setNotes] = useState('');
-  const [useSensor, setUseSensor] = useState(false);
+/* ========= App ========= */
 
-  const sp = useMemo(()=> findSpeciesEntry(speciesDB, species), [species, speciesDB]);
-  const ranges = idealRangesForSpecies(sp);
+export default function App(){
+  const [lang, setLang] = useState(load(LS_LANG, 'es'));
+  const [settings, setSettings] = useState(load(LS_SETTINGS, { lunar:false, location:null }));
+  const [bonsais, setBonsais] = useState(load(LS_BONSAIS, []));
+  const [speciesDB, setSpeciesDB] = useState(null);
+  const [stylesDB, setStylesDB] = useState(null);
+  const [tipsDB, setTipsDB] = useState(null);
+  const [toolsDB, setToolsDB] = useState(null);
+  const [propagationDB, setPropagationDB] = useState(null);
 
-  function submit(){
-    if(!name.trim()) return alert('Ponle un nombre 😉');
-    onCreate({ name:name.trim(), species:species.trim(), location:loc.trim(), notes:notes.trim(), sensor:{ use:useSensor, ranges: useSensor ? ranges : null } });
+  const [moon, setMoon] = useState({ status:'idle', rows:[], error:null });
+  const [showNew, setShowNew] = useState(false);
+  const [showLoc, setShowLoc] = useState(false);
+
+  /* ======= persist ======= */
+  useEffect(()=>save(LS_BONSAIS, bonsais), [bonsais]);
+  useEffect(()=>save(LS_SETTINGS, settings), [settings]);
+  useEffect(()=>save(LS_LANG, lang), [lang]);
+
+  /* ======= carga catálogos (desde /public) ======= */
+  useEffect(()=>{ fetch('/species.json').then(r=>r.json()).then(setSpeciesDB).catch(()=>setSpeciesDB(null)); },[]);
+  useEffect(()=>{ fetch('/styles.json').then(r=>r.json()).then(setStylesDB).catch(()=>setStylesDB(null)); },[]);
+  useEffect(()=>{ fetch('/tips.json').then(r=>r.json()).then(setTipsDB).catch(()=>setTipsDB(null)); },[]);
+  useEffect(()=>{ fetch('/tools.json').then(r=>r.json()).then(setToolsDB).catch(()=>setToolsDB(null)); },[]);
+  useEffect(()=>{ fetch('/propagation.json').then(r=>r.json()).then(setPropagationDB).catch(()=>setPropagationDB(null)); },[]);
+
+  /* ======= luna sugerencias ======= */
+  useEffect(()=>{
+    (async ()=>{
+      if (!settings?.lunar || !settings?.location) { setMoon({status:'idle', rows:[], error:null}); return; }
+      try{
+        setMoon(m=>({ ...m, status:'loading', error:null }));
+        const rows = await fetchMoon(settings.location.lat, settings.location.lon, 8);
+        setMoon({ status:'done', rows, error:null });
+      }catch(err){
+        setMoon({ status:'error', rows:[], error: err?.message || 'Error lunar' });
+      }
+    })();
+  }, [settings?.lunar, settings?.location?.lat, settings?.location?.lon]);
+
+  /* ======= utilidades de especie/cuidados ======= */
+  function findSpeciesEntry(input){
+    if (!speciesDB?.species?.length) return null;
+    const q = norm(input||'');
+    if (!q) return null;
+    // exact by scientific name
+    let hit = speciesDB.species.find(sp => norm(sp.scientific_name) === q);
+    if (hit) return hit;
+    // prefix scientific
+    hit = speciesDB.species.find(sp => norm(sp.scientific_name).startsWith(q));
+    if (hit) return hit;
+    // by common names
+    const candidates = speciesDB.species.filter(sp =>
+      (sp.common_names?.es || sp.common_names?.en || []).map(norm).some(n => q.includes(n) || n.includes(q))
+    );
+    return candidates[0] || null;
   }
 
-  return (
-    <div className="zb-modal">
-      <div className="zb-modal_dialog">
-        <div className="zb-modal_h">
-          <div>Nuevo bonsái</div>
-          <button className="zb-x" onClick={onClose}>✕</button>
-        </div>
-        <div className="zb-modal_b">
-          <div className="zb-grid-form">
-            <label>Nombre<input className="zb-input" value={name} onChange={e=>setName(e.target.value)} /></label>
-            <label>Especie<input className="zb-input" value={species} onChange={e=>setSpecies(e.target.value)} placeholder="Ej. Ficus microcarpa" /></label>
-            <label>Ubicación<input className="zb-input" value={loc} onChange={e=>setLoc(e.target.value)} placeholder="Interior luminoso, exterior sombra parcial…" /></label>
-          </div>
+  /* ======= CRUD bonsáis ======= */
+  function addBonsai(newB){
+    setBonsais(prev => [{ id: uid(), ...newB }, ...prev]);
+    setShowNew(false);
+  }
+  function updateBonsai(id, patch){
+    setBonsais(prev => prev.map(b => b.id === id ? { ...b, ...patch } : b));
+  }
+  function removeBonsai(id){
+    setBonsais(prev => prev.filter(b => b.id !== id));
+  }
 
-          <div className="zb-row">
-            <label><input type="checkbox" checked={useSensor} onChange={e=>setUseSensor(e.target.checked)} /> ¿Usas sensor (fertilidad/luz/humedad)?</label>
-          </div>
+  /* ======= Checklist con deshacer ======= */
+  function toggleTask(bid, key){
+    setBonsais(prev => prev.map(b=>{
+      if (b.id !== bid) return b;
+      const tasks = b.tasks || [];
+      const at = tasks.find(t => t.key === key);
+      if (!at){
+        return { ...b, tasks: [...tasks, { key, doneAt: Date.now() }] };
+      } else {
+        // deshacer
+        return { ...b, tasks: tasks.filter(t => t.key !== key) };
+      }
+    }));
+  }
+  function nextDueLabel(tasks=[], lang='es'){
+    // placeholder sencillo: 3 días riego, 30 abono:
+    const rule = {
+      water: 3, // días
+      fertilize: 30,
+      prune: 90
+    };
+    const out = {};
+    ['water','fertilize','prune'].forEach(k=>{
+      const last = tasks.find(t => t.key===k)?.doneAt || 0;
+      const due = new Date((last||Date.now()) + (rule[k]*86400000));
+      out[k] = fmtDate(due, lang);
+    });
+    return out;
+  }
 
+  /* ======= UI ======= */
+  const [locQuery, setLocQuery] = useState('');
+  const [locError, setLocError] = useState('');
+
+  async function handleUseMyLocation(){
+    setLocError('');
+    if (!('geolocation' in navigator)){ setLocError('Tu navegador no permite geolocalización.'); return; }
+    navigator.geolocation.getCurrentPosition(async (pos)=>{
+      try{
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        const place = await reverseByCoords(lat, lon, 'es');
+        setSettings(s => ({ ...s, location: place }));
+      }catch(err){ setLocError(err?.message || 'Error al ubicar'); }
+    }, (err)=>{
+      setLocError(err?.message || 'No se pudo acceder a la ubicación');
+    }, { enableHighAccuracy:true, timeout: 10000 });
+  }
+
+  async function handleSearchLocation(){
+    setLocError('');
+    const q = locQuery.trim();
+    if (!q) { setLocError('Escribe una ciudad (ej. Lima, Perú)'); return; }
+    try{
+      const place = await geocodeByName(q, 'es');
+      setSettings(s=>({ ...s, location: place }));
+    }catch(err){
+      setLocError('No encontrado. Intenta “Ciudad, País”.');
+    }
+  }
+
+  /* ======= Derivados ======= */
+  const countBonsais = bonsais.length;
+
+  /* ======= Forms ======= */
+  function NewForm({ onCancel, onSave }){
+    const [name, setName] = useState('');
+    const [species, setSpecies] = useState('');
+    const [notes, setNotes] = useState('');
+    const [useSensor, setUseSensor] = useState(false);
+    const [photo, setPhoto] = useState(null);
+
+    const ideals = useMemo(()=> pickSensorIdeals(species), [species]);
+
+    function onFile(e){
+      const f = e.target.files?.[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = (ev)=> setPhoto(ev.target.result);
+      reader.readAsDataURL(f);
+    }
+
+    return (
+      <Modal open title="Nuevo bonsái" onClose={onCancel}
+        footer={
+          <>
+            <button className="zb-btn" onClick={onCancel}>Cancelar</button>
+            <button className="zb-btn zb-btn--primary" onClick={()=>{
+              onSave({
+                name: name || 'Sin nombre',
+                species,
+                notes,
+                photo,
+                photos: photo ? [{src:photo, at:Date.now()}] : [],
+                createdAt: Date.now(),
+                tasks: [],
+                sensor: useSensor ? { use:true, ideals } : { use:false }
+              });
+            }}>Guardar</button>
+          </>
+        }>
+        <div className="zb-form">
+          <label>Nombre<input value={name} onChange={e=>setName(e.target.value)} placeholder="Ej. Junípero shohin" /></label>
+          <label>Especie<input value={species} onChange={e=>setSpecies(e.target.value)} placeholder="Ej. Juniperus chinensis" /></label>
+          <label>Foto inicial<input type="file" accept="image/*" onChange={onFile} /></label>
+          {photo && <img alt="preview" src={photo} className="zb-photo_prev" />}
+          <label>Notas<textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Apuntes, procedencia, etc." /></label>
+          <label className="zb-row">
+            <span>¿Usar sensor?</span>
+            <input type="checkbox" checked={useSensor} onChange={e=>setUseSensor(e.target.checked)} />
+          </label>
           {useSensor && (
-            <div className="zb-list">
-              <div className="zb-item"><div className="zb-item_t">Fertilidad</div><div className="zb-item_s">{ranges.fertility}</div></div>
-              <div className="zb-item"><div className="zb-item_t">Luz</div><div className="zb-item_s">{ranges.lux}</div></div>
-              <div className="zb-item"><div className="zb-item_t">Humedad</div><div className="zb-item_s">{ranges.humidity}</div></div>
-              {sp?.photos?.length>0 && (
-                <div className="zb-item">
-                  <div className="zb-item_t">Referencias</div>
-                  <div className="zb-gallery sm">
-                    {sp.photos.slice(0,6).map((src,i)=><img key={i} src={src} alt="" />)}
-                  </div>
-                </div>
-              )}
+            <div className="zb-sensor_box">
+              <div><b>Lux:</b> {ideals.lux}</div>
+              <div><b>Humedad sustrato:</b> {ideals.humidity}</div>
+              <div><b>EC (fertilidad):</b> {ideals.ec}</div>
+              <small>Estos son rangos ideales estimados según la especie.</small>
+            </div>
+          )}
+        </div>
+      </Modal>
+    );
+  }
+
+  function LocationModal(){
+    return (
+      <Modal open={showLoc} onClose={()=>setShowLoc(false)} title="Ubicación y calendario">
+        <div className="zb-form">
+          <div className="zb-row">
+            <input value={locQuery} onChange={e=>setLocQuery(e.target.value)} placeholder="Ej. Lima, Perú" />
+            <button className="zb-btn" onClick={handleSearchLocation}>Buscar</button>
+          </div>
+          <button className="zb-btn" onClick={handleUseMyLocation}>Usar mi ubicación</button>
+          <label className="zb-row">
+            <span>Calendario lunar</span>
+            <input type="checkbox" checked={!!settings.lunar} onChange={e=>setSettings(s=>({...s, lunar:e.target.checked}))} />
+          </label>
+          {!!locError && <div className="zb-error">Open-Meteo: {locError}</div>}
+          <div className="zb-help">
+            {settings.location
+              ? <>Actual: <b>{settings.location.name}</b></>
+              : <>Sin ubicación configurada.</>}
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  function BonsaiCard({ b }){
+    const tasks = b.tasks || [];
+    const next = nextDueLabel(tasks, lang);
+    const spec = b.species ? findSpeciesEntry(b.species) : null;
+
+    return (
+      <div className="zb-item">
+        <div className="zb-item_media">
+          {b.photo
+            ? <img src={b.photo} alt={b.name} />
+            : <div className="zb-ph">🌱</div>}
+        </div>
+        <div className="zb-item_body">
+          <div className="zb-item_title">{b.name}</div>
+          <div className="zb-item_sub">
+            {b.species || 'Especie no definida'}
+          </div>
+
+          {/* Checklist rápida con toggle/undo */}
+          <div className="zb-chip_row">
+            <Chip tone="teal" active={!!tasks.find(t=>t.key==='water')} onClick={()=>toggleTask(b.id,'water')}>💧 Riego · prox {next.water}</Chip>
+            <Chip tone="amber" active={!!tasks.find(t=>t.key==='fertilize')} onClick={()=>toggleTask(b.id,'fertilize')}>🧪 Abono · prox {next.fertilize}</Chip>
+            <Chip tone="pink" active={!!tasks.find(t=>t.key==='prune')} onClick={()=>toggleTask(b.id,'prune')}>✂️ Poda · prox {next.prune}</Chip>
+          </div>
+
+          {/* Sensores (si activó) */}
+          {b?.sensor?.use && (
+            <div className="zb-sensor_inline">
+              <div><b>Lux:</b> {b.sensor.ideals.lux}</div>
+              <div><b>Hum.:</b> {b.sensor.ideals.humidity}</div>
+              <div><b>EC:</b> {b.sensor.ideals.ec}</div>
             </div>
           )}
 
-          {sp && (
-            <div className="zb-note">Especie detectada: <b>{sp.name_es || sp.scientific_name}</b></div>
+          {/* Cuidados de especie (resumen) */}
+          {spec && tipsDB?.species && (
+            <details className="zb-details">
+              <summary>Cuidados de tu especie</summary>
+              <div className="zb-text">
+                {tipsDB.species[spec.scientific_name]
+                  ? tipsDB.species[spec.scientific_name]
+                  : 'Consejos generales: riega cuando el sustrato lo pida (no por días fijos), abona en temporada de crecimiento y evita enraizar encharcado.'}
+              </div>
+            </details>
           )}
         </div>
-        <div className="zb-modal_f">
-          <Btn tone="soft" onClick={onClose}>Cancelar</Btn>
-          <Btn tone="primary" onClick={submit}>Crear</Btn>
+        <div className="zb-item_actions">
+          <button className="zb-icon" title="Eliminar" onClick={()=>removeBonsai(b.id)}>🗑️</button>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="zb-app">
+      {/* Header */}
+      <header className="zb-header">
+        <div className="zb-header_inner">
+          <div className="zb-brand">
+            <span className="zb-leaf">🍃</span> <b>ZenBonsai</b>
+          </div>
+          <div className="zb-header_actions">
+            <Chip onClick={()=>{}} tone="neutral" active>
+              {settings.location ? settings.location.name : 'Sin ubicación'} · Luna: {settings.lunar ? 'on':'off'}
+            </Chip>
+            <Chip onClick={()=>setShowLoc(true)} tone="indigo">📍 Ubicación</Chip>
+            <Chip onClick={()=>setShowNew(true)} tone="green">➕ Nuevo</Chip>
+          </div>
+        </div>
+      </header>
+
+      <main className="zb-main">
+        {/* Próximos días sugeridos */}
+        <SectionCard title="Próximos días sugeridos" icon="🗓" right={
+          <button className="zb-pill zb-pill--alert" onClick={()=>setShowLoc(true)}>Configura ubicación</button>
+        }>
+          {settings.lunar && settings.location && moon.status==='done' && moon.rows.length>0 ? (
+            <div className="zb-row_wrap">
+              {moon.rows.slice(0,6).map((m)=>(
+                <div key={m.date} className="zb-sugg">
+                  <div className="zb-sugg_title">{fmtDate(m.date, lang)}</div>
+                  <div className="zb-sugg_badge">{moonLabel(m.phase)}</div>
+                  <div className="zb-sugg_note">Si usas calendario lunar, úsalo como referencia complementaria.</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="zb-empty">
+              {settings.lunar
+                ? 'Necesitas una ubicación para calcular fases lunares.'
+                : 'Abre “Ubicación” y activa (si quieres) calendario lunar.'}
+              {moon.status==='error' && <div className="zb-error">Open-Meteo: {moon.error}</div>}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Colección */}
+        <SectionCard title="Tu colección" icon="🪴" count={countBonsais} right={null}>
+          {countBonsais===0 ? (
+            <div className="zb-empty">Pulsa “Nuevo” para registrar el primero.</div>
+          ) : (
+            <div className="zb-list">
+              {bonsais.map(b => <BonsaiCard key={b.id} b={b} />)}
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Herramientas */}
+        <SectionCard title="Herramientas y usos" icon="🛠">
+          {!toolsDB?.tools
+            ? <div className="zb-empty">Sin datos de herramientas.</div>
+            : (
+              <div className="zb-grid">
+                {toolsDB.tools.map(t => (
+                  <div key={t.id} className="zb-tile">
+                    <div className="zb-tile_title">{t.name}</div>
+                    <div className="zb-tile_sub">{t.uses?.join(' · ')}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+        </SectionCard>
+
+        {/* Estilos (galería compacta) */}
+        <SectionCard title="Estilos" icon="🎴">
+          {!stylesDB?.styles
+            ? <div className="zb-empty">Sin estilos cargados.</div>
+            : (
+              <div className="zb-grid">
+                {stylesDB.styles.map(st => (
+                  <div key={st.id} className="zb-tile">
+                    {st.image && <img src={st.image} alt={st.name} className="zb-figure" />}
+                    <div className="zb-tile_title">{st.name}</div>
+                    <div className="zb-tile_sub">{st.alias || ''}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+        </SectionCard>
+
+        {/* Propagación */}
+        <SectionCard title="Propagación" icon="🌱">
+          {!propagationDB?.methods
+            ? <div className="zb-empty">Sin métodos cargados.</div>
+            : (
+              <ul className="zb-bullets">
+                {propagationDB.methods.map(m => <li key={m.id}><b>{m.name}:</b> {m.summary}</li>)}
+              </ul>
+            )}
+        </SectionCard>
+      </main>
+
+      {/* Modales */}
+      {showNew && <NewForm onCancel={()=>setShowNew(false)} onSave={addBonsai} />}
+      <LocationModal />
     </div>
   );
-}
-
-/* ========================= Helpers de especie/sensores ========================= */
-// (duplicadas aquí para que el archivo sea auto-contenible)
-function findSpeciesEntry(db, input){
-  if(!db?.species?.length || !input) return null;
-  const n = norm(input);
-  let hit = db.species.find(sp => norm(sp.scientific_name)===n || norm(sp.name_es||'')===n || sp.common_names?.es?.map(norm).includes(n));
-  if(hit) return hit;
-  hit = db.species.find(sp => norm(sp.scientific_name)?.startsWith(n));
-  if(hit) return hit;
-  const genus = (input.split(' ')[0] || '').trim();
-  if(!genus) return null;
-  const candidates = db.species.filter(sp => norm(sp.scientific_name).startsWith(genus+' '));
-  return candidates[0] || null;
-}
-function idealRangesForSpecies(sp){
-  const def = { fertility:'300–700 ppm', lux:'5,000–15,000 lx', humidity:'40–60 %' };
-  if(!sp?.sensors) return def;
-  const f = sp.sensors.fertility ? `${sp.sensors.fertility.min}–${sp.sensors.fertility.max} ${sp.sensors.fertility.unit||'ppm'}` : def.fertility;
-  const l = sp.sensors.lux ? `${sp.sensors.lux.min}–${sp.sensors.lux.max} lx` : def.lux;
-  const h = sp.sensors.humidity ? `${sp.sensors.humidity.min}–${sp.sensors.humidity.max} %` : def.humidity;
-  return { fertility:f, lux:l, humidity:h };
 }
