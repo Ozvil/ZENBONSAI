@@ -2,7 +2,7 @@
 // Geocoding + Astronomía con Open-Meteo, robusto ante timezones y SW
 
 export async function geocode(q) {
-  const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&timezone=auto`;
   url.searchParams.set('name', q);
   url.searchParams.set('count', '5');
   url.searchParams.set('language', 'es');
