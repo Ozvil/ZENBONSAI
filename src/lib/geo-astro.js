@@ -1,20 +1,28 @@
 // src/lib/geo-astro.js
-// Helpers de geocodificación y astronomía con Open-Meteo
+// Geocoding + Astronomía con Open-Meteo, robusto ante timezones y SW
 
 export async function geocode(q) {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=es`;
+  const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+  url.searchParams.set('name', q);
+  url.searchParams.set('count', '5');
+  url.searchParams.set('language', 'es');
+
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('geocode ' + r.status);
   const j = await r.json();
   return (j.results || []).map(it => ({
     name: [it.name, it.admin1, it.country].filter(Boolean).join(', '),
     lat: it.latitude,
-    lon: it.longitude
+    lon: it.longitude,
   }));
 }
 
 export async function reverseGeocode(lat, lon) {
-  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=es`;
+  const url = new URL('https://geocoding-api.open-meteo.com/v1/reverse');
+  url.searchParams.set('latitude', String(lat));
+  url.searchParams.set('longitude', String(lon));
+  url.searchParams.set('language', 'es');
+
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('reverse ' + r.status);
   const j = await r.json();
@@ -45,27 +53,27 @@ export function moonPhaseLabel(p) {
   return 'Luna nueva';
 }
 
-// Llama a /v1/astronomy con reintentos y sin caché
-export async function fetchAstronomy(lat, lon, startDate, endDate, tz) {
-  const tzGuess = tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto';
-  const base =
-    `https://api.open-meteo.com/v1/astronomy` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&start_date=${startDate}&end_date=${endDate}` +
-    `&daily=moon_phase,moonrise,moonset`;
+// Astronomy con retries y SIN caché (evita respuestas 404 cacheadas)
+export async function fetchAstronomy(lat, lon, startDate, endDate, tzGuess) {
+  const base = new URL('https://api.open-meteo.com/v1/astronomy');
+  base.searchParams.set('latitude', String(lat));
+  base.searchParams.set('longitude', String(lon));
+  base.searchParams.set('start_date', startDate);
+  base.searchParams.set('end_date', endDate);
+  base.searchParams.set('daily', 'moon_phase,moonrise,moonset');
 
-  const urls = [
-    `${base}&timezone=${encodeURIComponent(tzGuess)}`,
-    `${base}&timezone=auto`,
-    `${base}&timezone=UTC`,
-  ];
+  const tz1 = tzGuess || Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto';
+  // Orden de reintentos
+  const timezones = [tz1, 'auto', 'UTC', ''];
 
   let lastErr;
-  for (const url of urls) {
-    console.log('[astro] TRY', url);
+  for (const tz of timezones) {
+    const url = new URL(base);
+    if (tz) url.searchParams.set('timezone', tz);
+    console.log('[astro] TRY', url.toString());
     try {
       const r = await fetch(url, { cache: 'no-store' });
-      if (r.ok) return r.json();
+      if (r.ok) return r.json();       // ¡Listo!
       lastErr = new Error(r.status + ' ' + r.statusText);
     } catch (e) {
       lastErr = e;
