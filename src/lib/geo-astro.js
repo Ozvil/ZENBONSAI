@@ -1,62 +1,94 @@
 // src/lib/geo-astro.js
 
-const API_GEO = 'https://geocoding-api.open-meteo.com/v1';
+// ---------- util ----------
+export const fmtDate = (d) => {
+  const dt = (d instanceof Date) ? d : new Date(d);
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
-// Busca una ciudad por texto
-export async function geocode(q) {
-  const url = `${API_GEO}/search?name=${encodeURIComponent(q)}&count=8&language=es&format=json`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('geocode ' + r.status);
-  const j = await r.json();
-  return (j.results || []).map(x => ({
-    name: [x.name, x.admin1, x.country].filter(Boolean).join(', '),
-    lat: x.latitude,
-    lon: x.longitude,
+// ---------- geocoding ----------
+export async function geocode(query, { lang = 'es', count = 5 } = {}) {
+  const url = new URL('https://geocoding-api.open-meteo.com/v1/search');
+  url.search = new URLSearchParams({
+    name: query,
+    count,
+    language: lang,
+    format: 'json'
+  });
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Geocode ${res.status}`);
+  const json = await res.json();
+  const list = (json.results || []).map(r => ({
+    name: [r.name, r.admin1, r.country].filter(Boolean).join(', '),
+    lat: r.latitude,
+    lon: r.longitude
   }));
+  return list;
 }
 
-// Revierte lat/lon a nombre de lugar
-export async function reverseGeocode(lat, lon) {
-  const url = `${API_GEO}/reverse?latitude=${lat}&longitude=${lon}&language=es`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('reverse ' + r.status);
-  const j = await r.json();
-  const x = (j.results || [])[0];
+export async function reverseGeocode(lat, lon, { lang = 'es' } = {}) {
+  const url = new URL('https://geocoding-api.open-meteo.com/v1/reverse');
+  url.search = new URLSearchParams({
+    latitude: lat,
+    longitude: lon,
+    language: lang,
+    format: 'json'
+  });
+  const res = await fetch(url.toString());
+  if (!res.ok) throw new Error(`Reverse ${res.status}`);
+  const json = await res.json();
+  const r = (json.results || [])[0];
   return {
-    name: x ? [x.name, x.admin1, x.country].filter(Boolean).join(', ') : `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
-    lat, lon
+    name: r ? [r.name, r.admin1, r.country].filter(Boolean).join(', ') : `${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+    lat,
+    lon
   };
 }
 
-// ======= Astronomía (fases de luna) =======
+// ---------- astronomy ----------
 const API_ASTRO = 'https://api.open-meteo.com/v1/astronomy';
 
-export async function fetchAstronomy(lat, lon, start, end, tz = 'auto') {
-  const url = `${API_ASTRO}?latitude=${lat}&longitude=${lon}&start_date=${start}&end_date=${end}&daily=moon_phase,moonrise,moonset&timezone=${encodeURIComponent(tz)}`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('Astronomy ' + r.status);
-  return r.json();
-}
-
-// Etiquetas amigables para la fase de luna
+// Open-Meteo devuelve moon_phase entre 0..1 (0 nueva, 0.25 cuarto creciente, 0.5 llena, 0.75 cuarto menguante)
 export function moonPhaseLabel(p) {
   if (p == null) return '—';
-  const deg = Number(p);
-  if (Number.isNaN(deg)) return '—';
-  if (deg === 0) return 'Luna nueva';
-  if (deg > 0 && deg < 90) return 'Creciente';
-  if (deg === 90) return 'Cuarto creciente';
-  if (deg > 90 && deg < 180) return 'Gibosa creciente';
-  if (deg === 180) return 'Luna llena';
-  if (deg > 180 && deg < 270) return 'Gibosa menguante';
-  if (deg === 270) return 'Cuarto menguante';
-  return 'Menguante';
+  const v = Number(p);
+  if (isNaN(v)) return '—';
+  const wrap = (x) => (x + 1) % 1;
+  const dist = (a, b) => Math.min(Math.abs(a - b), Math.abs(wrap(a) - b), Math.abs(a - wrap(b)));
+  const nearest = [
+    { k: 0.00, t: 'Luna nueva' },
+    { k: 0.25, t: 'Cuarto creciente' },
+    { k: 0.50, t: 'Luna llena' },
+    { k: 0.75, t: 'Cuarto menguante' }
+  ].reduce((best, cur) => (dist(v, cur.k) < dist(v, best.k) ? cur : best));
+  return nearest.t;
 }
 
-// YYYY-MM-DD
-export function fmtDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+export async function fetchAstronomy(lat, lon, startDate, endDate, timezone) {
+  const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto';
+
+  const buildURL = (tzValue) => {
+    const u = new URL(API_ASTRO);
+    u.search = new URLSearchParams({
+      latitude: String(lat),
+      longitude: String(lon),
+      start_date: startDate,
+      end_date: endDate,
+      daily: 'moon_phase,moonrise,moonset',
+      timezone: tzValue
+    });
+    return u.toString();
+  };
+
+  // intento con timezone real, si falla 400/404 probamos con 'auto'
+  let res = await fetch(buildURL(tz));
+  if (!res.ok && (res.status === 400 || res.status === 404)) {
+    res = await fetch(buildURL('auto'));
+  }
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+
+  return res.json();
 }
