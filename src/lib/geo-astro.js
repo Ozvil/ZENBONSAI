@@ -3,10 +3,10 @@
 
 export async function geocode(q) {
   const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=es`;
-  const r = await fetch(url);
+  const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('geocode ' + r.status);
   const j = await r.json();
-  return (j.results || []).map((it) => ({
+  return (j.results || []).map(it => ({
     name: [it.name, it.admin1, it.country].filter(Boolean).join(', '),
     lat: it.latitude,
     lon: it.longitude
@@ -15,7 +15,7 @@ export async function geocode(q) {
 
 export async function reverseGeocode(lat, lon) {
   const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=es`;
-  const r = await fetch(url);
+  const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error('reverse ' + r.status);
   const j = await r.json();
   const it = (j.results || [])[0];
@@ -33,7 +33,7 @@ export function fmtDate(d) {
 
 export function moonPhaseLabel(p) {
   if (p == null) return '—';
-  const deg = Number(p) * 360; // 0..1 -> 0..360
+  const deg = Number(p) * 360;
   if (deg < 22.5) return 'Luna nueva';
   if (deg < 67.5) return 'Creciente c.';
   if (deg < 112.5) return 'Cuarto creciente';
@@ -45,18 +45,31 @@ export function moonPhaseLabel(p) {
   return 'Luna nueva';
 }
 
-export async function fetchAstronomy(lat, lon, startDate, endDate, tz = 'auto') {
-  const url =
+// Llama a /v1/astronomy con reintentos y sin caché
+export async function fetchAstronomy(lat, lon, startDate, endDate, tz) {
+  const tzGuess = tz || Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto';
+  const base =
     `https://api.open-meteo.com/v1/astronomy` +
     `?latitude=${lat}&longitude=${lon}` +
     `&start_date=${startDate}&end_date=${endDate}` +
-    `&daily=moon_phase,moonrise,moonset` +
-    `&timezone=${encodeURIComponent(tz)}`;
+    `&daily=moon_phase,moonrise,moonset`;
 
-  // Debug: deja esto encendido hasta que confirmemos en Network que es el correcto
-  console.log('[astro] GET', url);
+  const urls = [
+    `${base}&timezone=${encodeURIComponent(tzGuess)}`,
+    `${base}&timezone=auto`,
+    `${base}&timezone=UTC`,
+  ];
 
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
-  return r.json();
+  let lastErr;
+  for (const url of urls) {
+    console.log('[astro] TRY', url);
+    try {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (r.ok) return r.json();
+      lastErr = new Error(r.status + ' ' + r.statusText);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('fetchAstronomy failed');
 }
