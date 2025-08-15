@@ -1,5 +1,9 @@
-// app/api/astronomy/route.ts
+// src/app/api/astronomy/route.ts
 import { NextResponse } from "next/server";
+
+export const runtime = "nodejs";        // habilita process.env en App Router
+export const dynamic = "force-dynamic"; // evita que quede cacheado
+export const revalidate = 0;
 
 type AstroDay = {
   date: string;
@@ -9,8 +13,6 @@ type AstroDay = {
   moonset?: string;
   moon_phase?: string;
 };
-
-export const runtime = "nodejs"; // más simple para usar process.env
 
 function ymdRange(start: string, end: string): string[] {
   const out: string[] = [];
@@ -24,7 +26,7 @@ function ymdRange(start: string, end: string): string[] {
 
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(req.url); // <-- usa el mismo nombre "req"
     const lat = searchParams.get("lat");
     const lon = searchParams.get("lon");
     const start = searchParams.get("start");
@@ -36,32 +38,35 @@ export async function GET(req: Request) {
 
     const KEY = process.env.WEATHERAPI_KEY;
     if (!KEY) {
+      // Configura la env var en Vercel (Production y Preview) y redeploy
       return NextResponse.json({ error: "WEATHERAPI_KEY not configured" }, { status: 500 });
     }
 
     const dates = ymdRange(start, end);
-    const results = await Promise.all(
-      dates.map(async (dt) => {
-        const url = `https://api.weatherapi.com/v1/astronomy.json?key=${KEY}&q=${lat},${lon}&dt=${dt}`;
-        const r = await fetch(url);
-        if (!r.ok) return null;
-        const j = await r.json();
-        const a = j?.astronomy?.astro;
-        return {
-          date: dt,
-          sunrise: a?.sunrise,
-          sunset: a?.sunset,
-          moonrise: a?.moonrise,
-          moonset: a?.moonset,
-          moon_phase: a?.moon_phase,
-        } as AstroDay;
-      })
-    );
+    const days: AstroDay[] = [];
 
-    const days = results.filter(Boolean) as AstroDay[];
-    return NextResponse.json({ source: "WeatherAPI", days });
+    for (const dt of dates) {
+      const url = `https://api.weatherapi.com/v1/astronomy.json?key=${KEY}&q=${lat},${lon}&dt=${dt}`;
+      const r = await fetch(url, { cache: "no-store" });
+      if (!r.ok) {
+        console.error("WeatherAPI error", r.status, await r.text());
+        continue;
+      }
+      const j = await r.json();
+      const a = j?.astronomy?.astro;
+      days.push({
+        date: dt,
+        sunrise: a?.sunrise,
+        sunset: a?.sunset,
+        moonrise: a?.moonrise,
+        moonset: a?.moonset,
+        moon_phase: a?.moon_phase,
+      });
+    }
+
+    return NextResponse.json({ source: "WeatherAPI", days }, { status: 200 });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Unknown error" }, { status: 500 });
+    console.error("Astronomy route error:", err);
+    return NextResponse.json({ error: err?.message || "Internal error" }, { status: 500 });
   }
 }
-
