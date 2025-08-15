@@ -1,81 +1,69 @@
 // src/lib/geo-astro.js
-
-// --------- Utilidades de fecha ----------
-export function fmtDate(d) {
-  // YYYY-MM-DD
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${dd}`;
-}
-
-// --------- Geocoding (Open-Meteo, sin API key) ----------
 export async function geocode(q) {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=10&language=es&format=json`;
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=es&format=json`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error('geocode');
+  if (!r.ok) throw new Error(`Geocode ${r.status}`);
   const j = await r.json();
-  const out = (j.results || []).map(it => ({
+  return (j.results || []).map(it => ({
     name: `${it.name}${it.admin1 ? ', ' + it.admin1 : ''}${it.country ? ', ' + it.country : ''}`,
     lat: it.latitude,
-    lon: it.longitude,
+    lon: it.longitude
   }));
-  return out;
 }
 
 export async function reverseGeocode(lat, lon) {
-  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=es&format=json`;
+  const url = `https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=es`;
   const r = await fetch(url);
-  if (!r.ok) throw new Error('reverse');
+  if (!r.ok) throw new Error(`Reverse ${r.status}`);
   const j = await r.json();
   const it = (j.results || [])[0];
-  if (!it) throw new Error('no-reverse');
+  if (!it) throw new Error('Sin resultados');
   return {
     name: `${it.name}${it.admin1 ? ', ' + it.admin1 : ''}${it.country ? ', ' + it.country : ''}`,
-    lat: it.latitude,
-    lon: it.longitude,
+    lat, lon
   };
 }
 
-// --------- Astronomía (Open-Meteo /astronomy) ----------
-// IMPORTANTE: este endpoint exige daily=... y (opcional) rango de fechas.
-export async function fetchAstronomy(lat, lon, startYYYYMMDD, endYYYYMMDD) {
-  const url =
-    `https://api.open-meteo.com/v1/astronomy` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&daily=sunrise,sunset,moon_phase,moonrise,moonset` +
-    `&timezone=auto` +
-    (startYYYYMMDD ? `&start_date=${startYYYYMMDD}` : '') +
-    (endYYYYMMDD ? `&end_date=${endYYYYMMDD}` : '');
-  const r = await fetch(url);
+// yyyy-mm-dd
+export function fmtDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Etiqueta simple de fase lunar (0..1)
+export function moonPhaseLabel(v) {
+  if (v == null) return '—';
+  if (v === 0) return 'Luna nueva';
+  if (v > 0 && v < 0.25) return 'Creciente';
+  if (v === 0.25) return 'Cuarto creciente';
+  if (v > 0.25 && v < 0.5) return 'Gibosa creciente';
+  if (v === 0.5) return 'Luna llena';
+  if (v > 0.5 && v < 0.75) return 'Gibosa menguante';
+  if (v === 0.75) return 'Cuarto menguante';
+  return 'Menguante';
+}
+
+/**
+ * Llama al endpoint oficial:
+ * https://api.open-meteo.com/v1/astronomy
+ * Requisitos:
+ *  - latitude, longitude
+ *  - start_date, end_date (yyyy-mm-dd)
+ *  - timezone
+ *  - daily con cualquiera de estos: sunrise,sunset,moonrise,moonset,moon_phase
+ */
+export async function fetchAstronomy(lat, lon, startDate, endDate, tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'auto') {
+  const daily = ['moon_phase', 'moonrise', 'moonset'].join(',');
+  const url = `https://api.open-meteo.com/v1/astronomy?latitude=${lat}&longitude=${lon}&start_date=${startDate}&end_date=${endDate}&timezone=${encodeURIComponent(tz)}&daily=${daily}`;
+
+  const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  // Open-Meteo devuelve 4xx (ej. 404) cuando falta un parámetro o está mal
   if (!r.ok) {
-    const txt = await r.text().catch(() => '');
-    throw new Error(`Astronomy ${r.status} ${txt || ''}`.trim());
+    let reason = '';
+    try { reason = (await r.json())?.reason || ''; } catch {}
+    throw new Error(`Astronomy ${r.status} ${reason ? '(' + reason + ')' : ''}`);
   }
   return r.json();
-}
-
-// (Opcional) Meteorología diaria (si la usas en el futuro)
-export async function fetchForecast(lat, lon) {
-  const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&daily=temperature_2m_max,temperature_2m_min,precipitation_sum` +
-    `&timezone=auto`;
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('forecast');
-  return r.json();
-}
-
-// --------- Fase de la luna (etiqueta legible) ----------
-export function moonPhaseLabel(phase) {
-  // Open-Meteo moon_phase: 0=new, 0.25=first quarter, 0.5=full, 0.75=last quarter
-  // pero también da valores intermedios de 0..1
-  if (phase == null) return '—';
-  const p = Number(phase);
-  if (p >= 0.95 || p < 0.05) return 'Luna nueva';
-  if (p >= 0.45 && p <= 0.55) return 'Luna llena';
-  if (p >= 0.20 && p <= 0.30) return 'Cuarto creciente';
-  if (p >= 0.70 && p <= 0.80) return 'Cuarto menguante';
-  return p < 0.5 ? 'Creciente' : 'Menguante';
 }
