@@ -9,16 +9,20 @@ import {
   fmtDate
 } from './lib/geo-astro';
 
-// ================== util localStorage ==================
+/* ================= Utilidades LS ================= */
 const loadLS = (k, fb) => {
   try { const raw = localStorage.getItem(k); return raw ? JSON.parse(raw) : fb; }
   catch { return fb; }
 };
 const saveLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
 
-// ================== UI helpers ==================
+/* ================= UI helpers ================= */
 function Chip({ children, onClick, title }) {
-  return <button className="zb-chip" onClick={onClick} title={title}>{children}</button>;
+  return (
+    <button className="zb-chip" onClick={onClick} title={title}>
+      {children}
+    </button>
+  );
 }
 
 function Section({ icon, title, children, right, defaultOpen = true }) {
@@ -31,7 +35,11 @@ function Section({ icon, title, children, right, defaultOpen = true }) {
         </div>
         <div className="zb-card_right">
           {right}
-          <button className="zb-iconbtn" onClick={() => setOpen(o => !o)} aria-label="Abrir/cerrar">
+          <button
+            className="zb-iconbtn"
+            onClick={() => setOpen(o => !o)}
+            aria-label="Abrir/cerrar"
+          >
             {open ? '▾' : '▸'}
           </button>
         </div>
@@ -41,7 +49,7 @@ function Section({ icon, title, children, right, defaultOpen = true }) {
   );
 }
 
-// ================== Modal de ubicación ==================
+/* ================= Modal de ubicación ================= */
 function LocationModal({ open, onClose, onPick }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -133,11 +141,11 @@ function LocationModal({ open, onClose, onPick }) {
   );
 }
 
-// ================== App ==================
+/* ================= App ================= */
 export default function App() {
-  // settings/bonsais persistidos
+  // Estado principal (persistente en LS)
   const [settings, setSettings] = useState(() =>
-    loadLS('zb_settings', { location: null, lunar: true, lang: 'es' })
+    loadLS('zb_settings', { location: null, lunar: false, lang: 'es' })
   );
   const [bonsais, setBonsais] = useState(() => loadLS('zb_bonsais', []));
   const [openLoc, setOpenLoc] = useState(false);
@@ -155,30 +163,32 @@ export default function App() {
       try {
         const today = new Date();
         const start = fmtDate(today);
-        const end = fmtDate(new Date(today.getTime() + 4 * 86400e3)); // 5 días
-        const a = await fetchAstronomy(loc.lat, loc.lon, start, end);
+        const end   = fmtDate(new Date(today.getTime() + 4 * 86400e3)); // hoy + 4 días
+        const data  = await fetchAstronomy(loc.lat, loc.lon, start, end);
 
-        const days = (a.daily?.time || []).map((d, i) => ({
+        const days = (data.daily?.time || []).map((d, i) => ({
           date: d,
-          phase: a.daily?.moon_phase?.[i],
-          moonrise: a.daily?.moonrise?.[i],
-          moonset: a.daily?.moonset?.[i],
+          phase: data.daily.moon_phase?.[i],
+          moonrise: data.daily.moonrise?.[i],
+          moonset: data.daily.moonset?.[i]
         }));
 
         setAstro({ days, error: '' });
       } catch (e) {
-        setAstro({ days: [], error: 'Open-Meteo: ' + (e?.message || 'error') });
+        // Mostramos el texto exacto (si viene reason del API lo verás aquí)
+        setAstro({ days: [], error: String(e.message || e) });
       }
     })();
   }, [settings.lunar, loc?.lat, loc?.lon]);
 
+  // Header
   const headerLocation = useMemo(() => {
     const tag = settings.lunar ? 'Luna: on' : 'Luna: off';
     if (!loc) return `Sin ubicación · ${tag}`;
     return `${loc.name} · ${tag}`;
   }, [settings.lunar, loc]);
 
-  // UI acciones
+  // Acciones
   function toggleLunar() { setSettings(s => ({ ...s, lunar: !s.lunar })); }
   function addDummy() { setBonsais(x => [...x, { id: Date.now(), name: 'Mi bonsái', species: 'Ficus' }]); }
 
@@ -214,7 +224,7 @@ export default function App() {
           )}
 
           {settings.lunar && loc && astro.error && (
-            <div className="zb-error">{astro.error}</div>
+            <div className="zb-error">Open-Meteo: {astro.error}</div>
           )}
 
           {settings.lunar && loc && !astro.error && !astro.days.length && (
@@ -225,7 +235,9 @@ export default function App() {
             <div className="zb-row_wrap">
               {astro.days.map(d => (
                 <div key={d.date} className="zb-sugg">
-                  <div className="zb-sugg_title">{new Date(d.date).toLocaleDateString()}</div>
+                  <div className="zb-sugg_title">
+                    {new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short' })}
+                  </div>
                   <div className="zb-sugg_badge">{moonPhaseLabel(d.phase)}</div>
                   <div className="zb-sugg_note">Salida: {d.moonrise ?? '—'} · Puesta: {d.moonset ?? '—'}</div>
                 </div>
