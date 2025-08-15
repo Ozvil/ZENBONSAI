@@ -46,4 +46,56 @@ export async function reverseGeocode(lat: number, lon: number): Promise<GeoPlace
   if (!res.ok) return null;
   const j = await res.json();
   const r = j?.results?.[0];
-  if (!r)
+  if (!r) return null;
+  return {
+    name: r.name,
+    country: r.country,
+    admin1: r.admin1,
+    latitude: r.latitude,
+    longitude: r.longitude,
+  };
+}
+
+/**
+ * Astronomy — usa tu endpoint backend /api/astronomy (WeatherAPI)
+ * startISO / endISO: "YYYY-MM-DD"
+ */
+export async function fetchAstronomy(
+  lat: number,
+  lon: number,
+  startISO: string,
+  endISO: string
+): Promise<{ source: "WeatherAPI"; days: AstroDay[] }> {
+  const url = `/api/astronomy?lat=${lat}&lon=${lon}&start=${startISO}&end=${endISO}`;
+  const r = await fetch(url);
+  if (!r.ok) {
+    console.warn("Astronomy API error:", r.status, await r.text());
+    return { source: "WeatherAPI", days: [] };
+  }
+  const j = await r.json();
+  // El backend ya devuelve normalizado
+  return { source: "WeatherAPI", days: (j?.days ?? []) as AstroDay[] };
+}
+
+/** Etiqueta “bonita” para fase lunar (acepta inglés de WeatherAPI) */
+export function moonPhaseLabel(phase?: string): string {
+  if (!phase) return "—";
+  const p = phase.toLowerCase();
+  // Map a español
+  if (p.includes("new moon")) return "Luna Nueva";
+  if (p.includes("waxing crescent")) return "Creciente Iluminante";
+  if (p.includes("first quarter")) return "Cuarto Creciente";
+  if (p.includes("waxing gibbous")) return "Gibosa Creciente";
+  if (p.includes("full moon")) return "Luna Llena";
+  if (p.includes("waning gibbous")) return "Gibosa Menguante";
+  if (p.includes("last quarter") || p.includes("third quarter")) return "Cuarto Menguante";
+  if (p.includes("waning crescent")) return "Creciente Menguante";
+  // Fallback: capitaliza
+  return phase.replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+/** Fecha corta local (Lima por defecto) */
+export function fmtDate(iso: string, locale = "es-PE", tz = "America/Lima") {
+  const d = new Date(iso + "T12:00:00"); // forzar zona segura
+  return d.toLocaleDateString(locale, { weekday: "short", day: "2-digit", month: "short", timeZone: tz });
+}
