@@ -1,53 +1,177 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import LocationPicker from "./components/LocationPicker.jsx";
-import LunarCalendar from "./components/LunarCalendar.jsx";
+import { fetchAstronomy, moonPhaseLabel } from "./lib/geo-astro.js";
 
-/* ============== Utils ============== */
-const loadLS = function (k, fb) {
-  try { var raw = localStorage.getItem(k); return raw ? JSON.parse(raw) : fb; }
-  catch (e) { return fb; }
-};
-const saveLS = function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+/* ================== Utils & Defaults ================== */
+const loadLS = (k, fb) => { try{ const r = localStorage.getItem(k); return r? JSON.parse(r):fb; }catch{ return fb; } };
+const saveLS = (k, v) => { try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} };
 
 const SPECIES_PRESETS = [
-  { key: "juniperus", name: "Juniperus (enebro)", waterDays: 5 },
-  { key: "ficus", name: "Ficus", waterDays: 3 },
-  { key: "olmo", name: "Olmo chino", waterDays: 4 },
-  { key: "pino", name: "Pino", waterDays: 6 },
-  { key: "portulacaria", name: "Portulacaria", waterDays: 7 }
+  { key:"juniperus", name:"Juniperus (enebro)", waterDays:5 },
+  { key:"ficus", name:"Ficus", waterDays:3 },
+  { key:"olmo", name:"Olmo chino", waterDays:4 },
+  { key:"pino", name:"Pino", waterDays:6 },
+  { key:"portulacaria", name:"Portulacaria", waterDays:7 },
 ];
 
-const newId = () => Math.random().toString(36).slice(2, 10);
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const toDate = (v) => { const d = v ? new Date(v) : null; return d && !isNaN(d.getTime()) ? d : null; };
-const addDays = (iso, n) => { const d = toDate(iso) || new Date(); d.setDate(d.getDate() + (isFinite(n) ? Number(n) : 0)); return d.toISOString().slice(0,10); };
+const newId = () => Math.random().toString(36).slice(2,10);
+const todayISO = () => new Date().toISOString().slice(0,10);
+const toDate = (v) => { const d = v? new Date(v): null; return d && !isNaN(d.getTime()) ? d : null; };
+const addDays = (iso, n) => { const d = toDate(iso) || new Date(); d.setDate(d.getDate() + (isFinite(n)? Number(n):0)); return d.toISOString().slice(0,10); };
 
-/* ============== App ============== */
+/* ================== Form estable: evita perder el foco ================== */
+const BonsaiForm = React.memo(function BonsaiForm({ form, onPatch, onSubmit, onCancel }) {
+  // onPatch es estable (useCallback), así el componente no se “remonta” en cada tecla
+  return (
+    <div className="card">
+      <h2>{form.id ? "Editar bonsái" : "Agregar bonsái"}</h2>
+      <form
+        onSubmit={onSubmit}
+        style={{display:"grid", gap:10, gridTemplateColumns:"repeat(2, minmax(0,1fr))"}}
+      >
+        <input
+          className="input"
+          placeholder="Nombre"
+          value={form.name}
+          onChange={(e)=>onPatch({name:e.target.value})}
+        />
+        <select
+          className="input"
+          value={form.speciesKey}
+          onChange={(e)=>onPatch({speciesKey:e.target.value})}
+        >
+          {SPECIES_PRESETS.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
+        </select>
+        <input
+          className="input"
+          type="date"
+          value={form.acquired}
+          onChange={(e)=>onPatch({acquired:e.target.value})}
+        />
+        <input
+          className="input"
+          placeholder="Maceta / sustrato"
+          value={form.pot}
+          onChange={(e)=>onPatch({pot:e.target.value})}
+        />
+        <input
+          className="input"
+          placeholder="Días entre riegos (opcional)"
+          value={form.customWaterDays}
+          onChange={(e)=>onPatch({customWaterDays:(e.target.value||"").replace(/[^0-9]/g,"")})}
+        />
+        <input
+          className="input"
+          placeholder="Notas"
+          value={form.notes}
+          onChange={(e)=>onPatch({notes:e.target.value})}
+        />
+        <div style={{gridColumn:"1 / -1", display:"flex", gap:8}}>
+          <button className="btn primary" type="submit">{form.id? "Guardar":"Agregar"}</button>
+          {form.id ? <button className="btn" type="button" onClick={onCancel}>Cancelar</button> : null}
+        </div>
+      </form>
+    </div>
+  );
+});
+
+/* ================== AstroBadge en el detalle ================== */
+function AstroBadge({ coords }){
+  const [state, setState] = useState({loading:true, err:null, data:null});
+
+  useEffect(()=>{
+    let cancel = false;
+    async function run(){
+      const lat = Number(coords && coords.lat);
+      const lon = Number(coords && coords.lon);
+      if (!isFinite(lat) || !isFinite(lon)) {
+        setState({loading:false, err:"Configura una ubicación válida.", data:null});
+        return;
+      }
+      setState({loading:true, err:null, data:null});
+      const res = await fetchAstronomy({ lat, lon, date: new Date() });
+      if (cancel) return;
+      if (!res || !res.ok){ setState({loading:false, err: (res && res.error) || "No disponible", data:null}); }
+      else { setState({loading:false, err:null, data:res}); }
+    }
+    run();
+    return ()=>{ cancel = true; };
+  }, [coords && coords.lat, coords && coords.lon]);
+
+  // Reglas simples (ajústalas a tu criterio):
+  // - Nueva / menguante fuerte: evitar trasplantes; poda ligera ok.
+  // - Cuarto creciente / gibosa creciente: buen momento para poda de formación y alambrado.
+  // - Llena ±1d: evita cortes fuertes.
+  // - Cuarto menguante: trasplante más seguro (menos sangrado) en muchas especies.
+  const tipsFor = (d) => {
+    const p = Number(d.phaseFrac || 0);
+    const label = d.phaseText || moonPhaseLabel(p);
+    let prune = "Moderada";
+    let wire  = "Buen momento";
+    let repot = "Con cuidado";
+
+    if (p < 0.05 || p > 0.95) { // nueva
+      prune = "Ligera"; wire = "Ok"; repot = "Evitar";
+    } else if (p >= 0.45 && p <= 0.55) { // llena
+      prune = "Evitar cortes fuertes"; wire = "Ok"; repot = "Evitar";
+    } else if (p >= 0.70 && p <= 0.80) { // cuarto menguante aprox.
+      prune = "Ligera"; wire = "Ok"; repot = "Recomendado";
+    } else if (p >= 0.20 && p <= 0.40) { // creciente
+      prune = "Recomendado"; wire = "Recomendado"; repot = "Con cuidado";
+    }
+
+    return { label, prune, wire, repot };
+  };
+
+  if (state.loading) return <div className="card"><h2>Moon & care tips</h2><div className="muted">Cargando…</div></div>;
+  if (state.err)     return <div className="card"><h2>Moon & care tips</h2><div className="muted">{state.err}</div></div>;
+
+  const t = tipsFor(state.data);
+
+  return (
+    <div className="card">
+      <h2>Moon & care tips</h2>
+      <div style={{display:"grid", gap:8}}>
+        <div><strong>Fecha:</strong> {state.data.date}</div>
+        <div><strong>Fase:</strong> {t.label}{" "}
+          {isFinite(Number(state.data.phaseFrac)) ? ("(" + (state.data.phaseFrac*100).toFixed(1) + "%)") : ""}</div>
+        <div style={{display:"grid", gap:8, gridTemplateColumns:"repeat(3, minmax(0,1fr))"}}>
+          <div className="card" style={{background:"#1b1b1b"}}><strong>Poda</strong><div className="muted">{t.prune}</div></div>
+          <div className="card" style={{background:"#1b1b1b"}}><strong>Alambrado</strong><div className="muted">{t.wire}</div></div>
+          <div className="card" style={{background:"#1b1b1b"}}><strong>Trasplante</strong><div className="muted">{t.repot}</div></div>
+        </div>
+        <small className="muted">Consejos generales; ajusta por especie/clima.</small>
+      </div>
+    </div>
+  );
+}
+
+/* ================== App ================== */
 export default function App(){
+  /* ---- Estado raíz ---- */
   const [bonsais, setBonsais] = useState(loadLS("bonsais", []));
   const [logs, setLogs]       = useState(loadLS("careLogs", []));
   const [coords, setCoords]   = useState(loadLS("coords", { lat:-12.0464, lon:-77.0428, label:"Lima, Perú" }));
-  const [showLunar, setShowLunar] = useState(loadLS("useLunar", false));
 
   useEffect(()=> saveLS("bonsais", bonsais), [bonsais]);
   useEffect(()=> saveLS("careLogs", logs), [logs]);
   useEffect(()=> saveLS("coords", coords), [coords]);
-  useEffect(()=> saveLS("useLunar", showLunar), [showLunar]);
 
+  /* ---- Derivados ---- */
   const lastWaterByBonsai = useMemo(()=>{
-    const map = new Map();
+    const m = new Map();
     for (const l of logs){ if (l.type !== "riego") continue;
-      const prev = map.get(l.bonsaiId);
-      if (!prev || l.date > prev.date) map.set(l.bonsaiId, l);
+      const prev = m.get(l.bonsaiId);
+      if (!prev || l.date > prev.date) m.set(l.bonsaiId, l);
     }
-    return map;
+    return m;
   }, [logs]);
 
   const withNextWater = useMemo(()=>{
-    return bonsais.map((b)=>{
+    return bonsais.map(b=>{
       const preset = SPECIES_PRESETS.find(s=>s.key===b.speciesKey);
-      const baseDays = isFinite(b.customWaterDays) ? Number(b.customWaterDays) : (preset?.waterDays || 4);
-      const last = lastWaterByBonsai.get(b.id)?.date || b.acquired || todayISO();
+      const baseDays = isFinite(b.customWaterDays) ? Number(b.customWaterDays) : (preset && preset.waterDays) || 4;
+      const last = (lastWaterByBonsai.get(b.id)||{}).date || b.acquired || todayISO();
       const next = addDays(last, baseDays);
       return Object.assign({}, b, { baseDays, lastWaterDate:last, nextWaterDate:next });
     });
@@ -58,33 +182,36 @@ export default function App(){
     return withNextWater.filter(b => b.nextWaterDate <= t);
   }, [withNextWater]);
 
-  /* ------ CRUD ------ */
+  /* ---- Formulario (con handlers estables) ---- */
   const [form, setForm] = useState({
     id:null, name:"", speciesKey:"juniperus",
     acquired: todayISO(), pot:"", notes:"", customWaterDays:""
   });
-  const resetForm = () => setForm({
+  const patchForm = useCallback((p)=> setForm(f=>Object.assign({}, f, p)), []);
+  const resetForm = useCallback(()=> setForm({
     id:null, name:"", speciesKey:"juniperus",
     acquired: todayISO(), pot:"", notes:"", customWaterDays:""
-  });
+  }), []);
 
-  const onSubmitBonsai = (e) => {
+  const onSubmitBonsai = useCallback((e)=>{
     e && e.preventDefault && e.preventDefault();
     const id = form.id || newId();
     const rec = {
-      id, name: (form.name||"").trim() || "Bonsái",
+      id,
+      name: (form.name||"").trim() || "Bonsái",
       speciesKey: form.speciesKey,
       acquired: form.acquired || todayISO(),
-      pot: form.pot || "", notes: form.notes || "",
-      customWaterDays: form.customWaterDays==="" ? undefined : Math.max(1, Number(form.customWaterDays)||0)
+      pot: form.pot || "",
+      notes: form.notes || "",
+      customWaterDays: form.customWaterDays === "" ? undefined : Math.max(1, Number(form.customWaterDays)||0)
     };
-    setBonsais(prev => {
+    setBonsais(prev=>{
       const idx = prev.findIndex(x=>x.id===id);
       if (idx>=0){ const next = prev.slice(); next[idx]=rec; return next; }
       return [rec, ...prev];
     });
     resetForm();
-  };
+  }, [form, resetForm]);
 
   const editBonsai = (b) => setForm({
     id:b.id, name:b.name, speciesKey:b.speciesKey, acquired:b.acquired||todayISO(),
@@ -105,230 +232,151 @@ export default function App(){
   };
   const logsFor = (bonsaiId) => logs.filter(l=>l.bonsaiId===bonsaiId).slice(0,6);
 
-  /* ------ Tabs (bottom) ------ */
-  const [tab, setTab] = useState("trees");
+  /* ---- Navegación simple (lista/detalle) ---- */
+  const [view, setView] = useState({ name:"list" }); // {name:"list"} | {name:"detail", id:string}
+  const openDetail = (id) => setView({ name:"detail", id });
+  const backToList = () => setView({ name:"list" });
 
-  const BottomNav = () => (
-    <nav className="nav-bottom">
-      <div className="nav-inner">
-        <div className="nav-item" data-active={tab==="trees"} onClick={()=>setTab("trees")}>
-          <div className="icon">🌿</div><div>My Trees</div>
-        </div>
-        <div className="nav-item" data-active={tab==="care"} onClick={()=>setTab("care")}>
-          <div className="icon">🗓️</div><div>Care</div>
-        </div>
-        <div className="nav-item" data-active={tab==="progress"} onClick={()=>setTab("progress")}>
-          <div className="icon">📈</div><div>Progress</div>
-        </div>
-        <div className="nav-item" data-active={tab==="astro"} onClick={()=>setTab("astro")}>
-          <div className="icon">🌙</div><div>Astronomy</div>
-        </div>
-      </div>
-    </nav>
-  );
+  /* ================== Páginas ================== */
 
-  /* ------ Vistas ------ */
-  function PageTrees(){
+  function PageList(){
     return (
       <>
         <h1>My Trees</h1>
 
-        {/* Lista como tarjetas */}
+        {/* Lista */}
         <div className="tree-list">
           {withNextWater.length===0 ? (
             <div className="card center muted">Aún no agregas bonsáis.</div>
-          ) : withNextWater.map(b => {
+          ) : withNextWater.map(b=>{
             const speciesName = (SPECIES_PRESETS.find(s=>s.key===b.speciesKey)||{}).name || b.speciesKey;
             return (
-              <div key={b.id} className="tree-card">
+              <button key={b.id} className="tree-card" onClick={()=>openDetail(b.id)} style={{textAlign:"left"}}>
                 <div className="tree-info">
                   <h3>{b.name}</h3>
                   <div className="subtitle">{speciesName}</div>
                   <div className="last">Last watered: {b.lastWaterDate || "—"}</div>
                 </div>
-                <div className="tree-thumb" title={speciesName}>
-                  {/* Si tienes fotos, colócalas aquí */}
-                  <div style={{fontSize:22}}>🪴</div>
-                </div>
-              </div>
+                <div className="tree-thumb"><div style={{fontSize:22}}>🪴</div></div>
+              </button>
             );
           })}
         </div>
 
         <div className="spacer-12"></div>
 
-        {/* Formulario rápido para agregar/editar */}
-        <div className="card">
-          <h2>{form.id ? "Edit tree" : "Add tree"}</h2>
-          <form
-            onSubmit={onSubmitBonsai}
-            style={{display:"grid", gap:10, gridTemplateColumns:"repeat(2, minmax(0,1fr))"}}
-          >
-            <input className="input" placeholder="Name" value={form.name}
-                   onChange={(e)=>setForm(f=>Object.assign({}, f, {name:e.target.value}))}/>
-            <select className="input" value={form.speciesKey}
-                    onChange={(e)=>setForm(f=>Object.assign({}, f, {speciesKey:e.target.value}))}>
-              {SPECIES_PRESETS.map(s => <option key={s.key} value={s.key}>{s.name}</option>)}
-            </select>
-            <input className="input" type="date" value={form.acquired}
-                   onChange={(e)=>setForm(f=>Object.assign({}, f, {acquired:e.target.value}))}/>
-            <input className="input" placeholder="Pot / substrate" value={form.pot}
-                   onChange={(e)=>setForm(f=>Object.assign({}, f, {pot:e.target.value}))}/>
-            <input className="input" placeholder="Watering every N days (optional)" value={form.customWaterDays}
-                   onChange={(e)=>setForm(f=>Object.assign({}, f, {customWaterDays:(e.target.value||"").replace(/[^0-9]/g,"")}))}/>
-            <input className="input" placeholder="Notes" value={form.notes}
-                   onChange={(e)=>setForm(f=>Object.assign({}, f, {notes:e.target.value}))}/>
-            <div style={{gridColumn:"1 / -1", display:"flex", gap:8}}>
-              <button className="btn primary" type="submit">{form.id? "Save" : "Add"}</button>
-              {form.id ? <button className="btn" type="button" onClick={resetForm}>Cancel</button> : null}
-            </div>
-          </form>
-        </div>
-
-        {/* Acciones rápidas por árbol */}
-        {withNextWater.length>0 && (
-          <>
-            <div className="spacer-12"></div>
-            <div className="card">
-              <h2>Quick Actions</h2>
-              {withNextWater.map(b=>(
-                <div key={b.id} className="card" style={{background:"#1b1b1b", marginTop:10}}>
-                  <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
-                    <div style={{fontWeight:600}}>{b.name}</div>
-                    <div className="muted">Next: {b.nextWaterDate}</div>
-                  </div>
-                  <div className="tile-grid" style={{marginTop:10}}>
-                    <div className="tile">
-                      <div>💧</div><div className="title">
-                        <button className="btn primary" onClick={()=>quickLog(b.id, "riego")}>Add Water</button>
-                      </div>
-                    </div>
-                    <div className="tile">
-                      <div>🧪</div><div className="title">
-                        <button className="btn" onClick={()=>quickLog(b.id, "fertilización")}>Fertilize</button>
-                      </div>
-                    </div>
-                    <div className="tile">
-                      <div>✂️</div><div className="title">
-                        <button className="btn" onClick={()=>quickLog(b.id, "poda")}>Prune</button>
-                      </div>
-                    </div>
-                    <div className="tile">
-                      <div>📝</div><div className="title">
-                        <button className="btn" onClick={()=>quickLog(b.id, "observación")}>Note</button>
-                      </div>
-                    </div>
-                  </div>
-                  {logsFor(b.id).length>0 && (
-                    <div className="muted" style={{marginTop:10, fontSize:13}}>
-                      Recent: {logsFor(b.id).map(l => l.type).join(" · ")}
-                    </div>
-                  )}
-                  <div style={{marginTop:8}}>
-                    <button className="btn" onClick={()=>editBonsai(b)}>Edit</button>{" "}
-                    <button className="btn" onClick={()=>deleteBonsai(b.id)}>Delete</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+        {/* Form: estable, no pierde foco */}
+        <BonsaiForm
+          form={form}
+          onPatch={patchForm}
+          onSubmit={onSubmitBonsai}
+          onCancel={resetForm}
+        />
       </>
     );
   }
 
-  function PageCare(){
+  function PageDetail({ id }){
+    const b = withNextWater.find(x=>x.id===id);
+    if (!b) return (
+      <div className="card">
+        <button className="btn" onClick={backToList}>← Volver</button>
+        <div className="muted">No encontrado.</div>
+      </div>
+    );
+
+    const speciesName = (SPECIES_PRESETS.find(s=>s.key===b.speciesKey)||{}).name || b.speciesKey;
+
     return (
       <>
-        <h1>Care</h1>
-        <div className="card">
-          <h2>Today</h2>
-          {dueToday.length===0
-            ? <div className="center muted" style={{padding:"12px 0"}}>No pending waterings for today. 🌿</div>
-            : (
-              <table>
-                <thead><tr>
-                  <th>Tree</th><th>Species</th><th>Last</th><th>Every</th><th>Next</th><th></th>
-                </tr></thead>
-                <tbody>
-                  {dueToday.map(b=>(
-                    <tr key={b.id}>
-                      <td>{b.name}</td>
-                      <td>{(SPECIES_PRESETS.find(s=>s.key===b.speciesKey)||{}).name || b.speciesKey}</td>
-                      <td>{b.lastWaterDate || "—"}</td>
-                      <td>{b.baseDays} d</td>
-                      <td>{b.nextWaterDate}</td>
-                      <td><button className="btn primary" onClick={()=>quickLog(b.id, "riego")}>Water</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )
-          }
+        <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:10}}>
+          <button className="btn" onClick={backToList}>← My Trees</button>
+          <h1 style={{margin:0}}>{b.name}</h1>
+        </div>
+
+        {/* Hero */}
+        <div className="card" style={{display:"grid", gridTemplateColumns:"1fr auto", gap:12, alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:18, fontWeight:600}}>{speciesName}</div>
+            <div className="muted" style={{marginTop:6}}>
+              Last Watered: {b.lastWaterDate || "—"} · Next: {b.nextWaterDate}
+            </div>
+          </div>
+          <div className="tree-thumb" title={speciesName}><div style={{fontSize:22}}>🪴</div></div>
         </div>
 
         <div className="spacer-12"></div>
 
+        {/* Acciones rápidas */}
         <div className="card">
-          <h2>History</h2>
-          {logs.length===0
-            ? <div className="center muted" style={{padding:"12px 0"}}>No records yet.</div>
-            : (
-              <table>
-                <thead><tr><th>Date</th><th>Tree</th><th>Type</th><th>Note</th></tr></thead>
-                <tbody>
-                {logs.slice(0,200).map(l=>{
-                  const b = bonsais.find(x=>x.id===l.bonsaiId);
-                  return (
-                    <tr key={l.id}>
-                      <td>{l.date}</td>
-                      <td>{(b && b.name) || "—"}</td>
-                      <td>{l.type}</td>
-                      <td>{l.note || "—"}</td>
-                    </tr>
-                  );
-                })}
-                </tbody>
-              </table>
-            )
-          }
+          <h2>Acciones</h2>
+          <div className="tile-grid" style={{marginTop:10}}>
+            <div className="tile">
+              <div>💧</div>
+              <div className="title"><button className="btn primary" onClick={()=>quickLog(b.id, "riego")}>Registrar riego</button></div>
+            </div>
+            <div className="tile">
+              <div>🧪</div>
+              <div className="title"><button className="btn" onClick={()=>quickLog(b.id, "fertilización")}>Fertilización</button></div>
+            </div>
+            <div className="tile">
+              <div>✂️</div>
+              <div className="title"><button className="btn" onClick={()=>quickLog(b.id, "poda")}>Poda</button></div>
+            </div>
+            <div className="tile">
+              <div>📝</div>
+              <div className="title"><button className="btn" onClick={()=>quickLog(b.id, "observación")}>Observación</button></div>
+            </div>
+          </div>
         </div>
-      </>
-    );
-  }
 
-  function PageProgress(){
-    return (
-      <>
-        <h1>Progress</h1>
-        <div className="card center muted">En una siguiente iteración podemos graficar riegos/fotos por árbol 📈.</div>
-      </>
-    );
-  }
+        <div className="spacer-12"></div>
 
-  function PageAstronomy(){
-    return (
-      <>
-        <h1>Astronomy</h1>
+        {/* 🔭 Astronomía integrada al detalle */}
+        <AstroBadge coords={coords} />
+
+        <div className="spacer-12"></div>
+
+        {/* Historial corto */}
         <div className="card">
-          <LocationPicker value={coords} onChange={setCoords}/>
-          <LunarCalendar coords={coords} checked={showLunar} onCheckedChange={setShowLunar}/>
-          <p className="muted" style={{marginTop:8}}>Tip: deja activo el calendario lunar; se recuerda en tu dispositivo.</p>
+          <h2>Historial</h2>
+          {logsFor(b.id).length===0 ? (
+            <div className="muted">Sin registros todavía.</div>
+          ) : (
+            <table>
+              <thead><tr><th>Fecha</th><th>Tipo</th><th>Nota</th></tr></thead>
+              <tbody>
+                {logsFor(b.id).map(l=>(
+                  <tr key={l.id}><td>{l.date}</td><td>{l.type}</td><td>{l.note || "—"}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="spacer-12"></div>
+
+        {/* Editar / Eliminar */}
+        <div className="card" style={{display:"flex", gap:8, flexWrap:"wrap"}}>
+          <button className="btn" onClick={()=>{ editBonsai(b); window.scrollTo(0,0); backToList(); }}>Editar</button>
+          <button className="btn" onClick={()=>deleteBonsai(b.id)}>Eliminar</button>
         </div>
       </>
     );
   }
 
   return (
-    <>
-      <div className="container">
-        {/* Render dinámico de páginas */}
-        {tab==="trees" && <PageTrees/>}
-        {tab==="care" && <PageCare/>}
-        {tab==="progress" && <PageProgress/>}
-        {tab==="astro" && <PageAstronomy/>}
+    <div className="container">
+      {view.name === "list"   && <PageList/>}
+      {view.name === "detail" && <PageDetail id={view.id}/>}
+
+      {/* Ubicación (para el módulo lunar del detalle) */}
+      <div className="spacer-12"></div>
+      <div className="card">
+        <h2>Ubicación</h2>
+        <LocationPicker value={coords} onChange={setCoords}/>
+        <p className="muted" style={{marginTop:6}}>Se usa para calcular las fases y sugerencias de cuidado.</p>
       </div>
-      <BottomNav/>
-    </>
+    </div>
   );
 }
