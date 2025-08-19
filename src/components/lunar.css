@@ -1,0 +1,50 @@
+/* src/components/lunar.css */
+.lb-block { margin: 8px 0 16px 0; }
+
+.lb-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.lb-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  background: #fff;
+}
+
+.lb-btn {
+  padding: 10px 14px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.lb-btn:hover { border-color: #3a7bd5; }
+
+.lb-muted { color: #666; margin: 8px 0; }
+
+.lb-toggle { display: inline-flex; align-items: center; gap: 8px; margin: 8px 0 12px 0; }
+
+.lb-card {
+  border: 1px solid #e6e6e6;
+  border-radius: 12px;
+  padding: 14px;
+  background: #fff;
+}
+
+.lb-title { margin: 0 0 8px 0; }
+
+.lb-grid { display: grid; gap: 6px; }
+
+.lb-alert {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid #f99;
+  background: #ffecec;
+  border-radius: 8px;
+}
