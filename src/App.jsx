@@ -242,4 +242,110 @@ export default function App(){
                 <th style={{textAlign:"left", padding:"8px 0"}}>Bonsái</th>
                 <th style={{textAlign:"left", padding:"8px 0"}}>Especie</th>
                 <th style={{textAlign:"left", padding:"8px 0"}}>Cada</th>
-                <th style={{textAlign:"l
+                <th style={{textAlign:"left", padding:"8px 0"}}>Próx. riego</th>
+                <th style={{textAlign:"left", padding:"8px 0"}}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {withNextWater.map(b=>(
+                <tr key={b.id} style={{borderTop:"1px solid #eee", verticalAlign:"top"}}>
+                  <td style={{padding:"8px 0"}}>
+                    <div style={{fontWeight:600}}>{b.name}</div>
+                    <div style={{fontSize:13, color:"#666"}}>Adquirido: {b.acquired || "—"}</div>
+                    {b.pot && <div style={{fontSize:13, color:"#666"}}>Maceta/sustrato: {b.pot}</div>}
+                    {b.notes && <div style={{fontSize:13, color:"#666"}}>Notas: {b.notes}</div>}
+                  </td>
+                  <td style={{padding:"8px 0"}}>{SPECIES_PRESETS.find(s=>s.key===b.speciesKey)?.name || b.speciesKey}</td>
+                  <td style={{padding:"8px 0"}}>{b.baseDays} días</td>
+                  <td style={{padding:"8px 0"}}>{b.nextWaterDate}</td>
+                  <td style={{padding:"8px 0"}}>
+                    <div style={{display:"flex", gap:6, flexWrap:"wrap"}}>
+                      <button className="btn" onClick={()=>quickLog(b.id, "riego")}>Riego</button>
+                      <button className="btn" onClick={()=>quickLog(b.id, "fertilización")}>Fertilización</button>
+                      <button className="btn" onClick={()=>quickLog(b.id, "poda")}>Poda</button>
+                      <button className="btn" onClick={()=>quickLog(b.id, "observación")}>Observación</button>
+                      <button className="btn" onClick={()=>editBonsai(b)}>Editar</button>
+                      <button className="btn" onClick={()=>deleteBonsai(b.id)}>Eliminar</button>
+                    </div>
+                    {/* Logs cortos */}
+                    {logsFor(b.id).length>0 && (
+                      <div style={{marginTop:8, fontSize:13}}>
+                        <div style={{fontWeight:600, marginBottom:4}}>Historial reciente</div>
+                        <ul style={{margin:0, paddingLeft:18}}>
+                          {logsFor(b.id).map(l=>(
+                            <li key={l.id}>{l.date} — {l.type}{l.note?`: ${l.note}`:""}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+
+  const TabRegistros = () => (
+    <div className="card">
+      <h2 style={{marginTop:0}}>Registros</h2>
+      {logs.length===0 ? (
+        <Empty>No hay registros todavía.</Empty>
+      ) : (
+        <table style={{width:"100%", borderCollapse:"collapse"}}>
+          <thead>
+            <tr>
+              <th style={{textAlign:"left", padding:"8px 0"}}>Fecha</th>
+              <th style={{textAlign:"left", padding:"8px 0"}}>Bonsái</th>
+              <th style={{textAlign:"left", padding:"8px 0"}}>Tipo</th>
+              <th style={{textAlign:"left", padding:"8px 0"}}>Nota</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.slice(0,200).map(l=>{
+              const b = bonsais.find(x=>x.id===l.bonsaiId);
+              return (
+                <tr key={l.id} style={{borderTop:"1px solid #eee"}}>
+                  <td style={{padding:"8px 0"}}>{l.date}</td>
+                  <td style={{padding:"8px 0"}}>{b?.name || "—"}</td>
+                  <td style={{padding:"8px 0"}}>{l.type}</td>
+                  <td style={{padding:"8px 0"}}>{l.note || "—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  const TabAstronomia = () => (
+    <div className="card">
+      <h2 style={{marginTop:0}}>Ubicación & Astronomía</h2>
+      <LocationPicker value={coords} onChange={setCoords} />
+      <LunarCalendar coords={coords} checked={showLunar} onCheckedChange={setShowLunar} />
+      <p className="muted" style={{marginTop:8}}>
+        Tip: Puedes dejar marcada la opción de calendario lunar; se recuerda en tu dispositivo.
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="container">
+      <h1>ZEN Bonsai</h1>
+
+      <Tabs
+        value={tab}
+        onChange={setTab}
+        items={[
+          { key:"hoy", label:"Hoy", render: ()=> <TabHoy/> },
+          { key:"coleccion", label:"Colección", render: ()=> <TabColeccion/> },
+          { key:"registros", label:"Registros", render: ()=> <TabRegistros/> },
+          { key:"astro", label:"Astronomía", render: ()=> <TabAstronomia/> },
+        ]}
+      />
+    </div>
+  );
+}
